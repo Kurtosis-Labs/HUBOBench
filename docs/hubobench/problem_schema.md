@@ -18,10 +18,12 @@ Every instance generator writes to this schema. Every solver encoder reads from 
 | Property | V1 scope |
 |---|---|
 | Variable domain | `binary_01` only — each $x_i \in \{0, 1\}$ |
-| Constraints | Cardinality constraint only which is penalty-encoded into the objective |
+| Constraints | Cardinality constraint only, which is penalty-encoded into the objective |
 | Objective | Single polynomial, minimisation |
 | Polynomial degree | Up to 5 |
 | Constants | Allowed — stored in `objective_json.constant` |
+
+All instances are minimisation. `sense` is `"minimize"` everywhere; it participates in the identity hash (§6) but is not stored in the `objective_json` blob, since the solvers assume minimisation.
 
 ---
 
@@ -39,18 +41,18 @@ hubobench.db / instances table
 
 ## 3. `instances` Table
 
-One row per unique HUBO problem instance. Written by the instance generator at creation time. Primary key is the full 64-char content-derived hash.
+One row per unique HUBO problem instance. Written by the instance generator (or a format loader) at creation time. Primary key is the full 64-char content-derived hash.
 
 | Column | Type | Nullable | Description |
 |---|---|---|---|
-| `problem_hash` | TEXT PK | No | Full 64-char SHA-256. Computed by `benchmarks/hash.py :: compute_problem_hash()`. |
-| `problem_schema_version` | TEXT | No | `"0.3.0"` currently. |
-| `created_at` | TEXT | No | ISO 8601 UTC insertion timestamp. |
-| `num_variables` | INTEGER | No | Number of binary variables N. |
+| `problem_hash` | TEXT PK | No | Full 64-char SHA-256. Computed by `benchmarks/hash.py :: compute_problem_hash()`. The sole identity; any stored hash from a generator is recomputed on load, not trusted. |
+| `problem_schema_version` | TEXT | No | `"0.4.0"` currently. |
+| `created_at` | TEXT | No | ISO 8601 UTC insertion timestamp (column default). |
+| `num_variables` | INTEGER | No | Number of binary variables N. Typed column; **not** duplicated inside `objective_json`. |
 | `max_degree` | INTEGER | No | Highest polynomial degree present. |
-| `density` | REAL | No | Fraction of possible degree-`max_degree` monomials that are non-zero. Denominator is $C(N, `max_degree`)$. |
+| `density` | REAL | No | Fraction of possible degree-`max_degree` monomials that are non-zero. Denominator is $C(N, \text{max\_degree})$. |
 | `dynamic_range_ratio` | REAL | No | max\|c\| / min\|c\| across all non-zero coefficients. |
-| `coeff_dist` | TEXT | No | Coefficient distribution: `empirical` \| `synthetic` \| `gaussian`. |
+| `coeff_dist` | TEXT | No | Coefficient distribution: `empirical` \| `synthetic` \| `gaussian`. Generator-specific values are mapped to one of these on load (e.g. `log_uniform_signed` → `synthetic`). |
 | `num_terms` | INTEGER | No | Total non-zero terms across all degrees. |
 | `problem_class` | TEXT | No | `synthetic_random` \| `max_cut` \| `graph_coloring` \| `model_dependent` |
 | `constraint_ratio` | REAL | No | k/N where k is the cardinality target. `0.0` for unconstrained. |
@@ -60,7 +62,7 @@ One row per unique HUBO problem instance. Written by the instance generator at c
 
 ## 4. `objective_json` Blob
 
-Contains two fields needed by solver encoders.
+Contains exactly the two fields a solver encoder needs.
 
 ```json
 {
@@ -68,36 +70,35 @@ Contains two fields needed by solver encoders.
         {"vars": [0, 2],    "coef": -0.142},
         {"vars": [1, 2, 3], "coef":  0.038}
     ],
-    "constant":    0.204,
+    "constant": 0.204
 }
 ```
 
 | Field | Type | Description |
 |---|---|---|
 | `terms` | list | Each term: `{"vars": [int, ...], "coef": float}`. Variables are 0-based indices in `[0, n_variables)`. In canonical order per §5. |
-| `constant` | float | Scalar offset $c_0$. Irrelevant to the optimal $x^*$ but required for objective value comparison across solvers. |
+| `constant` | float | Scalar offset $c_0$. Irrelevant to the optimal $x^*$ but required for objective-value comparison across solvers. |
 
 The full polynomial evaluates as:
 
 $$f(x) = c_0 + \sum_{t \in \text{terms}} c_t \prod_{i \in t.\text{vars}} x_i$$
 
-The encoder read pattern:
+The encoder read pattern (via the shared `instance_loader`):
 
 ```python
-row      = db.execute(
-    "SELECT objective_json FROM instances WHERE problem_hash = ?", [problem_hash]
-).fetchone()
-instance = json.loads(row["objective_json"])
-
-# encode_problem(instance, config) reads instance["terms"],
-# instance["constant"], instance["n_variables"]
+# instance_loader.load_instance(conn, problem_hash) returns a LoadedInstance:
+#   problem_hash, num_variables (from the typed column),
+#   max_degree (from the typed column), objective ({"terms", "constant"}).
+# n_variables is NOT read from the blob — it is the typed num_variables column.
+inst = load_instance(conn, problem_hash)
+# encode_problem(inst.objective, inst.num_variables, inst.max_degree, config)
 ```
 
 ---
 
 ## 5. Term Canonicalisation
 
-Required for a deterministic and stable reproducibility hash. All generators must enforce these rules before writing to SQL.
+Required for a deterministic and stable identity hash. All generators (and loaders) must enforce these rules before writing to SQL and before hashing.
 
 1. **Indices within each term sorted ascending.** `{vars: [2, 0, 1], coef: c}` → `{vars: [0, 1, 2], coef: c}`.
 2. **No repeated indices within a term.** Binary idempotency: $x_i^2 = x_i$. Generators must simplify before insertion.
@@ -109,13 +110,14 @@ Required for a deterministic and stable reproducibility hash. All generators mus
 
 ## 6. Reproducibility Hash
 
-`problem_hash` is a SHA-256 digest of the minimum data needed to uniquely identify the problem. Two instances with identical polynomials over the same variable set in the same domain produce the same hash regardless of origin.
+`problem_hash` is a SHA-256 digest of the minimum data needed to uniquely identify the problem. Two instances with identical polynomials over the same variable set in the same domain produce the same hash regardless of origin. A hash stored by a generator is **recomputed** on load using the reference implementation; stored hashes from older schemes are discarded, the recomputed value is the identity.
 
 ### 6.1 Input
 
 ```json
 {
     "objective": {
+        "sense":    "minimize",
         "constant": <float>,
         "terms":    [{"coef": <float>, "vars": [<int>, ...]}, ...]
     },
@@ -126,9 +128,11 @@ Required for a deterministic and stable reproducibility hash. All generators mus
 }
 ```
 
+`sense` participates in the hash even though it is constant, so that identity remains well-defined if a maximisation variant is ever added.
+
 ### 6.2 Excluded fields
 
-Everything except the polynomial and variable parameters is excluded. Schema version, generator metadata, and all derived blocks (diagnostics, rosenberg, ground truth) do not affect problem identity.
+Everything except the polynomial (including `sense`) and variable parameters is excluded. Schema version, generator metadata, and all derived blocks (diagnostics, rosenberg, ground truth) do not affect problem identity.
 
 ### 6.3 Serialisation rules
 
@@ -143,13 +147,30 @@ Reference implementation: `benchmarks/hash.py :: compute_problem_hash()`.
 
 ## 7. Consumption Contract
 
-Each solver encoder reads from the `objective_json` blob and returns a tuple from `encode_problem`.
+Each solver_io module reads the canonical objective (via the shared loader) and exposes this interface.
 
 ```python
-# All solver_io modules expose this interface:
-encode_problem(instance: dict, config: dict) -> tuple[payload, pre_submission_flags]
-decode_response(raw_response, instance: dict, config: dict, host: dict, flags: list) -> dict
+# All solver_io modules expose:
+encode_problem(
+    objective: dict,        # {"terms": [...], "constant": float}
+    num_variables: int,     # the typed instances.num_variables
+    max_degree: int,        # the typed instances.max_degree
+    config: dict,
+) -> tuple[payload, flagged]            # flagged: bool, pre-submission warning fired
+
+decode_response(
+    raw_response,           # solver-native response object/dict
+    objective: dict,
+    num_variables: int,
+    flagged: bool = False,  # threaded through from encode
+) -> tuple[solution_row, samples_rows]  # see solution_schema.md §6
 ```
+
+Notes:
+
+- `encode_problem` returns `(payload, flagged)`. On a hard reject it raises `ValueError` whose second arg is the structured reject list; the runner records a `HARD_REJECT` row.
+- `decode_response` takes `flagged` as an *input* threaded from encode (it becomes a `DYNAMIC_RANGE_WARNING`, or `AUX_VIOLATION` flag at decode), not an output.
+- The return is `(solution_row, samples_rows)`, both preshaped for direct insert. See `solution_schema.md` §6 for their exact shapes (`best_vars_json` is a JSON string; sample `vars` is raw bytes).
 
 ---
 
