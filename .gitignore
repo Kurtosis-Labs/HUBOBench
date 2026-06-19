@@ -1,0 +1,11 @@
+.env
+license_gurobi/
+licensetools13.0.1/
+
+data/*.db
+
+# Python cache — delete stale .pyc for removed files
+__pycache__/
+*.pyc
+
+.DS_Store
