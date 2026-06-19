@@ -1,0 +1,234 @@
+"""compiler/solver_io/helpers/solution_writer.py
+
+Shared DB-write layer for HUBOBench solver runs.
+
+All inserts/updates into hubobench.db go through here so the upsert keys,
+column lists, and skip logic live in exactly one place. solver_io decode
+functions produce preshaped row dicts; this module stamps the orchestration
+FKs (solver_config_id, run_id, solution_id) and writes them.
+
+Identity model (agreed):
+    solutions  — one row per (problem_hash, solver_config_id).
+                 run_id is a "last touched by" payload column. Failed/missing rows are UPDATED in 
+                 place on retry via ON CONFLICT(problem_hash, solver_config_id) DO UPDATE.
+    samples    — child rows of a solution; deleted and rewritten whenever the
+                 parent solution row is (re)written, so a retried run never
+                 leaves stale samples from the previous attempt.
+
+Skip logic:
+    An instance is considered DONE for a given solver_config_id iff a
+    solutions row exists for it with status IN ('OK','FLAGGED','SUBOPTIMAL_GAP').
+    Failed attempts (API_ERROR, TIMEOUT, HARD_REJECT) are NOT done and are
+    re-run (and updated in place).
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from typing import Any
+
+
+DONE_STATUSES = ("OK", "SUBOPTIMAL_GAP", "HARD_REJECT")
+
+# Column contract for the solutions upsert. solution_id is autoincrement;
+# problem_hash + solver_config_id are the conflict key; the rest are payload.
+_SOLUTION_COLUMNS = (
+    "problem_hash",
+    "solver_config_id",
+    "run_id",
+    "status",
+    "best_energy",
+    "best_vars_json",
+    "wall_clock_s",
+    "algorithmic_time_s",
+    "flags",
+)
+
+# Outcome fields a decode() row is allowed to carry. The runner injects the
+# three it cannot know (problem_hash is known to the loader, but we let the
+# runner pass it explicitly for symmetry; solver_config_id and run_id are
+# pure orchestration).
+_DECODE_OUTCOME_FIELDS = (
+    "status",
+    "best_energy",
+    "best_vars_json",
+    "wall_clock_s",
+    "algorithmic_time_s",
+    "flags",
+)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# solver_configs upsert + skip query
+# ─────────────────────────────────────────────────────────────────────────────
+
+def resolve_solver_config_id(
+    conn: sqlite3.Connection,
+    solver_name: str,
+    config: dict[str, Any],
+    solver_version: str | None,
+    limits_dossier_version: str,
+) -> tuple[int, bool]:
+    """Find or create the solver_configs row for (solver_name, config).
+
+    config is normalised (sort_keys) before hashing into config_json so that
+    key order does not create spurious distinct configs. The UNIQUE constraint
+    is (solver_name, config_json).
+
+    Returns:
+        (solver_config_id, created)
+        created is True if a new config row was inserted, False if it already
+        existed. The aggregator uses `created` to decide its skip strategy:
+        a brand-new config means no instance has been run under it yet.
+    """
+    config_json = json.dumps(config, sort_keys=True, separators=(",", ":"))
+
+    row = conn.execute(
+        "SELECT solver_config_id FROM solver_configs "
+        "WHERE solver_name = ? AND config_json = ?",
+        (solver_name, config_json),
+    ).fetchone()
+    if row is not None:
+        return int(row[0]), False
+
+    cur = conn.execute(
+        "INSERT INTO solver_configs "
+        "(solver_name, solver_version, limits_dossier_version, config_json) "
+        "VALUES (?, ?, ?, ?)",
+        (solver_name, solver_version, limits_dossier_version, config_json),
+    )
+    return int(cur.lastrowid), True
+
+
+def pending_problem_hashes(
+    conn: sqlite3.Connection,
+    solver_config_id: int,
+) -> list[str]:
+    """Return problem_hashes NOT yet completed under this solver_config_id.
+
+    A two-step anti-join: every instance whose hash does not appear in
+    solutions with a DONE status for this config.
+    """
+    placeholders = ",".join("?" for _ in DONE_STATUSES)
+    sql = f"""
+        SELECT problem_hash FROM instances
+        WHERE problem_hash NOT IN (
+            SELECT problem_hash FROM solutions
+            WHERE solver_config_id = ?
+              AND status IN ({placeholders})
+        )
+    """
+    params = (solver_config_id, * DONE_STATUSES)
+    return [r[0] for r in conn.execute(sql, params)]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# solutions upsert + samples insert
+# ─────────────────────────────────────────────────────────────────────────────
+
+def write_solution(
+    conn: sqlite3.Connection,
+    *,
+    problem_hash: str,
+    solver_config_id: int,
+    run_id: str,
+    solution_row: dict[str, Any],
+    samples_rows: list[dict[str, Any]],
+) -> int:
+    """Upsert one solution and rewrite its samples. Returns solution_id.
+
+    solution_row carries only the outcome fields a decoder can know:
+        status, best_energy, best_vars_json, wall_clock_s, algorithmic_time_s
+    This function injects problem_hash, solver_config_id, run_id, then upserts
+    on (problem_hash, solver_config_id): a new instance inserts, an existing
+    one (e.g. a prior failure) is updated in place with the new run_id.
+
+    samples_rows each carry: sample_rank, energy, count, vars (raw bytes).
+    They must NOT carry solution_id — it is stamped here after the parent row
+    is known. Existing samples for the solution are deleted first so a retry
+    never mixes old and new samples. Gurobi passes samples_rows=[].
+
+    Raises:
+        ValueError: if solution_row has stray/missing outcome keys, or a
+            samples row is missing a required field or carries solution_id.
+    """
+    # ── validate the outcome contract ────────────────────────────────────
+    got = set(solution_row)
+    expected = set(_DECODE_OUTCOME_FIELDS)
+    if got != expected:
+        raise ValueError(
+            f"solution_row outcome mismatch for problem_hash={problem_hash}: "
+            f"missing={sorted(expected - got)} stray={sorted(got - expected)}"
+        )
+
+    full_row = {
+        "problem_hash":     problem_hash,
+        "solver_config_id": solver_config_id,
+        "run_id":           run_id,
+        **solution_row,
+    }
+
+    # ── upsert solutions on (problem_hash, solver_config_id) ──────────────
+    cols         = ", ".join(_SOLUTION_COLUMNS)
+    placeholders = ", ".join(f":{c}" for c in _SOLUTION_COLUMNS)
+    update_set   = ", ".join(
+        f"{c}=excluded.{c}"
+        for c in _SOLUTION_COLUMNS
+        if c not in ("problem_hash", "solver_config_id")
+    )
+    upsert = (
+        f"INSERT INTO solutions ({cols}) VALUES ({placeholders}) "
+        f"ON CONFLICT(problem_hash, solver_config_id) DO UPDATE SET {update_set}"
+    )
+    try:
+        conn.execute(upsert, full_row)
+    except sqlite3.Error as exc:
+        raise sqlite3.Error(
+            f"solutions upsert failed for problem_hash={problem_hash}, "
+            f"solver_config_id={solver_config_id}: {exc}"
+        ) from exc
+
+    # ── recover the solution_id (insert OR update path) ───────────────────
+    sol_id = conn.execute(
+        "SELECT solution_id FROM solutions "
+        "WHERE problem_hash = ? AND solver_config_id = ?",
+        (problem_hash, solver_config_id),
+    ).fetchone()[0]
+    sol_id = int(sol_id)
+
+    # ── rewrite samples: clear old, insert new ────────────────────────────
+    conn.execute("DELETE FROM samples WHERE solution_id = ?", (sol_id,))
+    for s in samples_rows:
+        s_keys = set(s)
+        if "solution_id" in s_keys:
+            raise ValueError(
+                "samples row must not carry solution_id; it is stamped by the writer"
+            )
+        required = {"sample_rank", "energy", "count", "vars"}
+        if not required.issubset(s_keys):
+            raise ValueError(
+                f"samples row missing fields {sorted(required - s_keys)}"
+            )
+        conn.execute(
+            "INSERT INTO samples (solution_id, sample_rank, energy, count, vars) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (sol_id, int(s["sample_rank"]), float(s["energy"]),
+             int(s["count"]), s["vars"]),
+        )
+
+    return sol_id
+
+
+def ensure_run(
+    conn: sqlite3.Connection,
+    run_id: str,
+    solution_schema_version: str,
+    notes: str | None = None,
+) -> None:
+    """Insert the runs row for this batch if it does not already exist."""
+    conn.execute(
+        "INSERT OR IGNORE INTO runs (run_id, solution_schema_version, notes) "
+        "VALUES (?, ?, ?)",
+        (run_id, solution_schema_version, notes),
+    )
