@@ -59,7 +59,7 @@ log = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Named zones for batch generation
+# Named zones for batch generation (Customisable)
 # ─────────────────────────────────────────────────────────────────────────────
 
 DR_ZONES: dict[str, float] = {
