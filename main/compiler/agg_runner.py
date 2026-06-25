@@ -39,8 +39,8 @@ from main.compiler.solver_io.helpers.solution_writer import (
     pending_problem_hashes,
     ensure_run,
 )
+from main.constants import SOLUTION_SCHEMA_VERSION
 
-SOLUTION_SCHEMA_VERSION = "0.3.0"
 DEFAULT_DB = "data/hubobench.db"
 
 # solver_name -> runner module. solver_name is the value stored in

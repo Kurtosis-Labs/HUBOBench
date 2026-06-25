@@ -30,7 +30,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from main.data.config import SCHEMA_VERSION
+from main.constants import PROBLEM_SCHEMA_VERSION
 from main.data.encoding.apply_cardinality import (
     apply_cardinality_penalty,
     cardinality_k_for_variant,
@@ -254,7 +254,7 @@ def assemble_instance(
     # ── §7: Assemble SQL row (keys == INSTANCE_COLUMNS) ───────────────────
     sql_row: dict[str, Any] = {
         "problem_hash":           rep_hash,
-        "problem_schema_version": SCHEMA_VERSION,
+        "problem_schema_version": PROBLEM_SCHEMA_VERSION,
         "created_at":             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "num_variables":          n_variables,
         "max_degree":             features["max_degree"],

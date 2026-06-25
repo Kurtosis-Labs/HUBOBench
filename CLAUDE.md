@@ -80,7 +80,8 @@ agg_runner  (main/compiler/agg_runner.py)        ← orchestrator: SOLVER_REGIST
   `gurobi_miqp.encode_problem` at solve time. (The README repo-layout omits this directory.)
 - **`main/data/`** — `synthetic_generator.py` (entry point) → `encoding/instance_builder.py:assemble_instance`
   (pure: cardinality penalty, classifier features, hash, SQL row) → `encoding/{apply_cardinality,
-  compute_diagnostics}.py`. `config.py` holds shared constants (`SCHEMA_VERSION = "0.3.0"`, `EPS_COEF`, …).
+  compute_diagnostics}.py`. `config.py` holds generator constants (`EPS_COEF`, …); the schema versions live
+  in `main/constants.py` (`PROBLEM_SCHEMA_VERSION`/`SOLUTION_SCHEMA_VERSION = "0.4.0"`), migrated by `main/migrations/`.
 - **`main/benchmarks/hash.py`** — `compute_problem_hash` is the live hash used by `instance_builder`. The same
   file also carries a legacy `fill_hashes` / `compute_solution_hash` API built around a nested "canonical
   solution dict" that the current SQL-era write path (`solution_writer`) does **not** use — don't wire new

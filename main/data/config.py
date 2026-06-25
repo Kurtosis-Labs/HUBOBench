@@ -36,7 +36,7 @@ CARDINALITY_VARIANTS = ["kfree", "khalf", "kquarter"]
 EPS_COEF             = 1e-15   # drop terms with |coef| < this
 CARDINALITY_M_FACTOR = 10.0    # cardinality penalty M = factor × max|coef in base objective|
 
-# ── Schema / generator versioning ─────────────────────────────────────────────
+# ── Generator versioning ──────────────────────────────────────────────────────
+# Schema versions live in main/constants.py (the single source of truth).
 
-SCHEMA_VERSION = "0.3.0"
 GENERATOR_NAME = "hubo_bench"
