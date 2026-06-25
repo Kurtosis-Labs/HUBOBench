@@ -45,6 +45,12 @@ python -m main.compiler.agg_runner
 python -m main.compiler.agg_runner --solvers SA_OpenJij gurobi_miqp --db data/hubobench.db --run-id myrun_001
 ```
 
+Apply pending schema migrations (idempotent tracking-table runner; ordered steps under `main/migrations/`):
+
+```bash
+python -m main.migrations.run        # m0001 (0.3→0.4 versions), m0002 (content-addressed solver identity)
+```
+
 There is **no test suite and no linter/formatter** configured.
 
 API/credentialed solvers read `.env` at the repo root (copy `.env.example`): `QCI_API_URL` + `QCI_TOKEN`
@@ -102,9 +108,13 @@ on-disk copy of the polynomial — no instance files exist), **`solver_configs`*
   **is** part of the hash input (`instance_builder` §4), so instances differing only in N don't collide.
 - **`samples.vars` is a raw byte blob** (1 byte/var, value 0/1), not JSON. Write `bytes(assignment)`; read
   `numpy.frombuffer(row.vars, dtype=numpy.uint8)`.
-- **`config_json` is normalized with `sort_keys`** before the `UNIQUE(solver_name, config_json)` probe.
-  Editing a solver's `DEFAULT_CONFIG` therefore creates a **new** `solver_config_id`, under which every
-  instance is "pending" again — a config change re-runs the whole corpus, it does not overwrite old results.
+- **Solver identity is content-addressed.** `solver_configs.solver_identity_hash` = SHA-256 over
+  `(solver_name, source_commit, config, environment_digest, dep_lock_digest)`
+  (`main/compiler/solver_io/helpers/identity.py`); `UNIQUE(solver_identity_hash)` is the anchor. Changing the
+  `DEFAULT_CONFIG` **or** the code commit, dependency lock (`uv.lock`), or container/host forks a **new**
+  `solver_config_id`, under which every instance is "pending" again — so a changed solver re-runs the corpus
+  rather than overwriting another solver's results. Runs **refuse a dirty git tree** (`HUBOBENCH_ALLOW_DIRTY=1`
+  overrides, marking the commit `+dirty`). There is **no `solver_version` column** (`dep_lock_digest` supersedes it).
 - **`solutions` upserts in place** on `(problem_hash, solver_config_id)`; `samples` for that solution are
   deleted and rewritten on every (re)write, so a retry never mixes old and new samples.
 - **Skip / retry is driven by `solution_writer.DONE_STATUSES = ("OK", "SUBOPTIMAL_GAP", "HARD_REJECT")`.**
@@ -123,6 +133,6 @@ on-disk copy of the polynomial — no instance files exist), **`solver_configs`*
 Follow `README.md` "Adding a new solver" (six steps). In short: write the limits dossier
 (`docs/limits/<solver>_limits.md`, version-pinned) → `main/compiler/solver_io/<solver>.py` (encode/decode, pure)
 → `main/compiler/solvers/run_<solver>.py` (orchestrator, writes a row on every path) → import + register in
-`agg_runner.SOLVER_REGISTRY` keyed by `SOLVER_NAME`, and add a `_solver_version()` branch. Verify with
+`agg_runner.SOLVER_REGISTRY` keyed by `SOLVER_NAME`. Verify with
 `python -m main.compiler.agg_runner --solvers <solver>`. The binding contracts are `docs/hubobench/problem_schema.md`
 (encode reads this) and `docs/hubobench/solution_schema.md` (decode returns this).

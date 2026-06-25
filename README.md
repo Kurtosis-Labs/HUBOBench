@@ -276,7 +276,7 @@ Two edits in `main/compiler/agg_runner.py`:
    }
    ```
 
-If the solver reports an installed library version, add a branch to `_solver_version()` so `solver_configs.solver_version` is populated. Optional but recommended for reproducibility.
+Reproducibility provenance — the git commit, `uv.lock` digest, and container/host fingerprint — is captured automatically by the runner and folded into the solver's content-addressed identity (`solver_configs.solver_identity_hash`). There is no per-solver version step to add. Note: runs refuse a dirty git tree unless `HUBOBENCH_ALLOW_DIRTY=1`.
 
 That is the whole registration. agg_runner now resolves the config id, computes the pending set (instances with no completed result under this config; failed attempts retry automatically), and runs your wrapper over each. Verify:
 
