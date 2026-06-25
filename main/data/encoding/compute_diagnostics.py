@@ -19,11 +19,7 @@ generator-context fields and are not derivable from the polynomial.
 from __future__ import annotations
 
 import math
-import sys
 from collections import defaultdict
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def compute_instance_features(

@@ -12,19 +12,18 @@ that module.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 # ── Repo layout ──────────────────────────────────────────────────────────────
-# DATA_ROOT is the package root (the directory containing this file). The
-# default database lives in a sibling data/ directory at the repo root.
+# DATA_ROOT is this data package's directory (main/data/). REPO_ROOT is the
+# repository root, three levels up (main/data/config.py → repo root). The
+# default database lives in a top-level data/ directory at the repo root,
+# kept separate from the main/ package code.
 
 DATA_ROOT = Path(__file__).parent.resolve()
-_REPO_ROOT = DATA_ROOT.parent
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
-DEFAULT_DB_PATH = _REPO_ROOT / "data" / "hubobench.db"
+DEFAULT_DB_PATH = REPO_ROOT / "data" / "hubobench.db"
 
 # ── Cardinality variants ──────────────────────────────────────────────────────
 # Generic "select exactly k of N" constraint variants. kfree applies no

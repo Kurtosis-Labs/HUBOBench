@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from compiler.solver_io.helpers.decode_common import (
+from main.compiler.solver_io.helpers.decode_common import (
     evaluate_polynomial,
     best_vars_json_from_assignment,
     energy_mismatch,

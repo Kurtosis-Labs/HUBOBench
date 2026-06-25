@@ -34,26 +34,21 @@ import argparse
 import json
 import logging
 import sqlite3
-import sys
 from itertools import combinations
 from pathlib import Path
 
 import numpy as np
 
-_SRC = Path(__file__).parent
-if str(_SRC) not in sys.path:
-    sys.path.insert(0, str(_SRC))
-
-from config import (
-    DATA_ROOT,
+from main.data.config import (
     EPS_COEF,
+    REPO_ROOT,
 )
-from encoding.instance_builder import (
+from main.data.encoding.instance_builder import (
     assemble_instance,
     insert_instance,
 )
 
-HUBOBENCH_DB = DATA_ROOT.parent / "data"/ "hubobench.db"
+HUBOBENCH_DB = REPO_ROOT / "data" / "hubobench.db"
 
 log = logging.getLogger(__name__)
 
