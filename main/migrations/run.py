@@ -15,7 +15,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 from main.constants import PROBLEM_SCHEMA_VERSION, SOLUTION_SCHEMA_VERSION
-from main.migrations.steps import m0001_v03_to_v04
+from main.migrations.steps import m0001_v03_to_v04, m0002_solver_identity
 
 DEFAULT_DB = "data/hubobench.db"
 
@@ -23,6 +23,7 @@ DEFAULT_DB = "data/hubobench.db"
 # application order and must never be reshuffled once a step has shipped.
 STEPS = [
     m0001_v03_to_v04,
+    m0002_solver_identity,
 ]
 
 
