@@ -43,6 +43,7 @@ hubobench/                                # repo root
 ├── data/
 │   └── hubobench.db                      # canonical instances + results (gitignored, runtime)
 ├── main/                                 # the installable package (import root)
+│   ├── constants.py                      # PROBLEM_/SOLUTION_SCHEMA_VERSION
 │   ├── data/
 │   │   ├── config.py                     # generator config + shared constants
 │   │   ├── synthetic_generator.py        # generator entry point
@@ -56,16 +57,23 @@ hubobench/                                # repo root
 │   │   │   ├── run_sa_openjij.py
 │   │   │   ├── run_gurobi_miqp.py
 │   │   │   └── ...
-│   │   └── solver_io/                    # encode/decode (one per solver)
-│   │       ├── sa_openjij.py
-│   │       ├── gurobi_miqp.py
-│   │       ├── ...
-│   │       └── helpers/
-│   │           ├── instance_loader.py    # load_instance(conn, problem_hash)
-│   │           ├── solution_writer.py    # write_solution(...) + config/run helpers
-│   │           └── decode_common.py      # shared decode utilities
+│   │   ├── solver_io/                    # encode/decode (one per solver)
+│   │   │   ├── sa_openjij.py
+│   │   │   ├── gurobi_miqp.py
+│   │   │   ├── ...
+│   │   │   └── helpers/
+│   │   │       ├── instance_loader.py    # load_instance(conn, problem_hash)
+│   │   │       ├── solution_writer.py    # write_solution(...) + config/run helpers
+│   │   │       ├── identity.py           # content-addressed solver identity
+│   │   │       └── decode_common.py      # shared decode utilities
+│   │   └── reduction/                    # degree-≥3 → quadratic reduction
+│   │       └── rosenberg.py              # Rosenberg substitution (aux vars)
+│   ├── migrations/                       # idempotent schema-migration runner
+│   │   ├── run.py
+│   │   └── steps/                        # m0001 … m0003
 │   └── benchmarks/
-│       └── hash.py                       # canonical problem hashing
+│       ├── hash.py                       # canonical problem hashing
+│       └── verify_corpus.py              # corpus integrity check (command)
 ├── docs/
 │   ├── limits/                           # limit dossiers
 │   │   ├── dossier_template.md           # template for new limits dossiers
@@ -91,6 +99,12 @@ python -m main.compiler.agg_runner
 
 # Run a subset
 python -m main.compiler.agg_runner --solvers SA_OpenJij gurobi_miqp
+
+# Apply pending schema migrations (idempotent; m0001 … m0003)
+python -m main.migrations.run
+
+# Verify corpus integrity (re-derive every problem_hash from its stored row)
+python -m main.benchmarks.verify_corpus
 ```
 
 ---
@@ -116,7 +130,7 @@ agg_runner
 
 **The dossier is the source of truth for what the solver can and cannot accept.** Write it first, because the encode function's pre-submission checks are derived directly from it.
 
-1. Copy `dossiers/dossier_template.md` to `dossiers/<solver>_limits.md`.
+1. Copy `docs/limits/dossier_template.md` to `docs/limits/<solver>_limits.md`.
 2. Fill every section. The ones that drive code:
    - **§1 Problem class** — the exact input form. Determines your encode mapping.
    - **§3 Hard limits** — values that cause a rejected submission. Each becomes a pre-submission check in encode (returns a flag rather than submitting a doomed payload).
@@ -307,7 +321,7 @@ Key invariants to respect:
 
 A new solver is complete when:
 
-- [ ] `dossiers/<solver>_limits.md` exists, version pinned, §3 and §4 filled.
+- [ ] `docs/limits/<solver>_limits.md` exists, version pinned, §3 and §4 filled.
 - [ ] `main/compiler/solver_io/<solver>.py` exports `SOLVER_NAME`, `LIMITS_DOSSIER_VERSION`, `encode_problem`, `decode_response`, `build_failure_row`.
 - [ ] `encode_problem` raises on dossier §3 hard limits, flags on §4 soft limits, performs no I/O.
 - [ ] `decode_response` returns the canonical `(solution_row, samples_rows)`; energy recomputed canonically.

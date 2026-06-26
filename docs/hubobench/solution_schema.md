@@ -180,7 +180,7 @@ The runner provides `problem_hash`, `solver_config_id`, and `run_id` from its ow
 | `HARD_REJECT` | Pre-submission feasibility check refused the instance. | Null | Empty |
 | `API_ERROR` | Solver-side error: rejected payload, network failure, license/allocation exhausted. | Null | Empty |
 
-`DONE_STATUSES = (OK, SUBOPTIMAL_GAP)` — the skip query treats these as completed work. `TIMEOUT`, `HARD_REJECT`, and `API_ERROR` are not done and are retried (and upserted in place) on the next run.
+`DONE_STATUSES = (OK, SUBOPTIMAL_GAP, HARD_REJECT)` — the skip query treats these as completed work. `TIMEOUT` and `API_ERROR` are not done and are retried (and upserted in place) on the next run. `HARD_REJECT` is a deliberate, terminal rejection and is never retried. `write_solution` additionally refuses to overwrite any row already in a DONE status unless `force=True`, so a completed result cannot be silently clobbered.
 
 **`FLAGGED` is retired.** In prior versions a pre-submission warning produced `status = FLAGGED`. That conflated a termination state with an annotation. Warnings now live in `flags` and never gate rerun; a warned-but-completed run keeps its real termination status (`OK` / `SUBOPTIMAL_GAP`) and is therefore DONE.
 

@@ -15,9 +15,9 @@ orchestrates. One run_id is shared across all solvers/instances in the batch
 and is stamped as the "last touched by" run on every row written.
 
 Usage:
-    python -m compiler.agg_runner                 # all solvers, all pending
-    python -m compiler.agg_runner --solvers dirac3 SA_OpenJij
-    python -m compiler.agg_runner --db data/hubobench.db --run-id myrun_001
+    python -m main.compiler.agg_runner                 # all solvers, all pending
+    python -m main.compiler.agg_runner --solvers dirac3 SA_OpenJij
+    python -m main.compiler.agg_runner --db data/hubobench.db --run-id myrun_001
 """
 
 from __future__ import annotations
