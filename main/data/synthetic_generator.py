@@ -10,22 +10,22 @@ Coefficients are drawn log-uniformly across the full requested range with
 random signs. No domain-specific structure is embedded.
 
 Instances write directly to hubobench.db (instances table) conforming to
-problem_schema.md v0.3.0. The table is assumed to already exist (created out
+problem_schema.md v0.4.0. The table is assumed to already exist (created out
 of band from schema.sql); this module owns no DDL. No JSON files are produced.
 
 Usage — programmatic:
-    from synthetic_generator import generate_instance
+    from main.data.synthetic_generator import generate_instance
     sql_row, record = generate_instance(
         n_variables=30, max_degree=3,
         density=0.3, dynamic_range=200.0, seed=42,
     )
 
 Usage — CLI (single instance):
-    python synthetic_generator.py --n 30 --degree 3 --density 0.3 --dr 200 --seed 42
+    python -m main.data.synthetic_generator --n 30 --degree 3 --density 0.3 --dr 200 --seed 42
 
 Usage — CLI (batch sweep):
-    python synthetic_generator.py --batch
-    python synthetic_generator.py --batch --seeds 0 1 2 3 4
+    python -m main.data.synthetic_generator --batch
+    python -m main.data.synthetic_generator --batch --seeds 0 1 2 3 4
 """
 
 from __future__ import annotations

@@ -45,6 +45,19 @@ python -m main.compiler.agg_runner
 python -m main.compiler.agg_runner --solvers SA_OpenJij gurobi_miqp --db data/hubobench.db --run-id myrun_001
 ```
 
+Apply pending schema migrations (idempotent tracking-table runner; ordered steps under `main/migrations/`):
+
+```bash
+python -m main.migrations.run        # m0001 (0.3→0.4 versions), m0002 (content-addressed solver identity), m0003 (solution 0.4→0.5)
+```
+
+Verify corpus integrity (re-derive every `problem_hash` from its stored row; exits non-zero on any mismatch).
+This is an explicit check — `load_instance` trusts the row on the hot path; run this in CI / before scoring / after any manual DB edit:
+
+```bash
+python -m main.benchmarks.verify_corpus   # OK if every problem_hash still matches its content
+```
+
 There is **no test suite and no linter/formatter** configured.
 
 API/credentialed solvers read `.env` at the repo root (copy `.env.example`): `QCI_API_URL` + `QCI_TOKEN`
@@ -81,7 +94,7 @@ agg_runner  (main/compiler/agg_runner.py)        ← orchestrator: SOLVER_REGIST
 - **`main/data/`** — `synthetic_generator.py` (entry point) → `encoding/instance_builder.py:assemble_instance`
   (pure: cardinality penalty, classifier features, hash, SQL row) → `encoding/{apply_cardinality,
   compute_diagnostics}.py`. `config.py` holds generator constants (`EPS_COEF`, …); the schema versions live
-  in `main/constants.py` (`PROBLEM_SCHEMA_VERSION`/`SOLUTION_SCHEMA_VERSION = "0.4.0"`), migrated by `main/migrations/`.
+  in `main/constants.py` (`PROBLEM_SCHEMA_VERSION = "0.4.0"`, `SOLUTION_SCHEMA_VERSION = "0.5.0"`), migrated by `main/migrations/`.
 - **`main/benchmarks/hash.py`** — `compute_problem_hash` is the live hash used by `instance_builder`. The same
   file also carries a legacy `fill_hashes` / `compute_solution_hash` API built around a nested "canonical
   solution dict" that the current SQL-era write path (`solution_writer`) does **not** use — don't wire new
@@ -102,15 +115,23 @@ on-disk copy of the polynomial — no instance files exist), **`solver_configs`*
   **is** part of the hash input (`instance_builder` §4), so instances differing only in N don't collide.
 - **`samples.vars` is a raw byte blob** (1 byte/var, value 0/1), not JSON. Write `bytes(assignment)`; read
   `numpy.frombuffer(row.vars, dtype=numpy.uint8)`.
-- **`config_json` is normalized with `sort_keys`** before the `UNIQUE(solver_name, config_json)` probe.
-  Editing a solver's `DEFAULT_CONFIG` therefore creates a **new** `solver_config_id`, under which every
-  instance is "pending" again — a config change re-runs the whole corpus, it does not overwrite old results.
-- **`solutions` upserts in place** on `(problem_hash, solver_config_id)`; `samples` for that solution are
+- **Solver identity is content-addressed.** `solver_configs.solver_identity_hash` = SHA-256 over
+  `(solver_name, source_commit, config, environment_digest, dep_lock_digest)`
+  (`main/compiler/solver_io/helpers/identity.py`); `UNIQUE(solver_identity_hash)` is the anchor. Changing the
+  `DEFAULT_CONFIG` **or** the code commit, dependency lock (`uv.lock`), or container/host forks a **new**
+  `solver_config_id`, under which every instance is "pending" again — so a changed solver re-runs the corpus
+  rather than overwriting another solver's results. Runs **refuse a dirty git tree** (`HUBOBENCH_ALLOW_DIRTY=1`
+  overrides, marking the commit `+dirty`). There is **no `solver_version` column** (`dep_lock_digest` supersedes it).
+- **`solutions` upserts in place** on `(problem_hash, solver_config_id)` (the conflict key — a write overwrites
+  iff that pair already exists; the `DO UPDATE` has no `WHERE`/status check); `samples` for that solution are
   deleted and rewritten on every (re)write, so a retry never mixes old and new samples.
+- **`write_solution` refuses to overwrite a DONE row** (status in `DONE_STATUSES`) unless `force=True` — a
+  storage-level guard so a direct/out-of-band write can't clobber a finished result. The orchestrator already
+  never routes a DONE instance here, so in normal runs the guard never fires.
 - **Skip / retry is driven by `solution_writer.DONE_STATUSES = ("OK", "SUBOPTIMAL_GAP", "HARD_REJECT")`.**
-  A `HARD_REJECT` is **terminal** — it is *not* retried. Only `API_ERROR` and `TIMEOUT` are re-run.
-  ⚠️ The `solution_writer` module docstring and `schema.sql` comments claim `HARD_REJECT` is retried; the
-  `DONE_STATUSES` constant (source of truth) says otherwise. Trust the constant.
+  A `HARD_REJECT` is **terminal** — it is *not* retried. Only `API_ERROR` and `TIMEOUT` are re-run. The
+  `solution_writer` docstring and `schema.sql` comments are aligned to this (a prior drift that called
+  `HARD_REJECT` retried was fixed alongside the write guard).
 - **Failed runs still write a row** (`best_energy = NULL`); only non-null rows are eligible for downstream
   comparison.
 - **Two timing fields:** `wall_clock_s` (end-to-end) and `algorithmic_time_s` (solver-internal; equals wall
@@ -123,6 +144,6 @@ on-disk copy of the polynomial — no instance files exist), **`solver_configs`*
 Follow `README.md` "Adding a new solver" (six steps). In short: write the limits dossier
 (`docs/limits/<solver>_limits.md`, version-pinned) → `main/compiler/solver_io/<solver>.py` (encode/decode, pure)
 → `main/compiler/solvers/run_<solver>.py` (orchestrator, writes a row on every path) → import + register in
-`agg_runner.SOLVER_REGISTRY` keyed by `SOLVER_NAME`, and add a `_solver_version()` branch. Verify with
+`agg_runner.SOLVER_REGISTRY` keyed by `SOLVER_NAME`. Verify with
 `python -m main.compiler.agg_runner --solvers <solver>`. The binding contracts are `docs/hubobench/problem_schema.md`
 (encode reads this) and `docs/hubobench/solution_schema.md` (decode returns this).

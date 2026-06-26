@@ -15,9 +15,9 @@ orchestrates. One run_id is shared across all solvers/instances in the batch
 and is stamped as the "last touched by" run on every row written.
 
 Usage:
-    python -m compiler.agg_runner                 # all solvers, all pending
-    python -m compiler.agg_runner --solvers dirac3 SA_OpenJij
-    python -m compiler.agg_runner --db data/hubobench.db --run-id myrun_001
+    python -m main.compiler.agg_runner                 # all solvers, all pending
+    python -m main.compiler.agg_runner --solvers dirac3 SA_OpenJij
+    python -m main.compiler.agg_runner --db data/hubobench.db --run-id myrun_001
 """
 
 from __future__ import annotations
@@ -39,6 +39,7 @@ from main.compiler.solver_io.helpers.solution_writer import (
     pending_problem_hashes,
     ensure_run,
 )
+from main.compiler.solver_io.helpers.identity import capture_provenance
 from main.constants import SOLUTION_SCHEMA_VERSION
 
 DEFAULT_DB = "data/hubobench.db"
@@ -64,7 +65,9 @@ def run_batch(
     """
     ensure_run(conn, run_id, SOLUTION_SCHEMA_VERSION, notes)
     conn.commit()
-    # host = _host_info()
+
+    # Capture run provenance once (refuses on a dirty tree; see identity.py).
+    provenance = capture_provenance()
 
     summary: dict[str, dict[str, int]] = {}
 
@@ -72,14 +75,13 @@ def run_batch(
         module = SOLVER_REGISTRY[solver_name]
         config = module.DEFAULT_CONFIG
 
-        # ----- Resolve config id (creates the solver_configs row if new) -----
-        solver_version = _solver_version(solver_name)
+        # ----- Resolve config id (content-addressed identity; new row if unseen) -----
         solver_config_id, created = resolve_solver_config_id(
             conn,
             solver_name=solver_name,
             config=config,
-            solver_version=solver_version,
             limits_dossier_version=module.LIMITS_DOSSIER_VERSION,
+            provenance=provenance,
         )
         conn.commit()
 
@@ -112,23 +114,6 @@ def run_batch(
         print(f"[agg] {solver_name} done: {counts}")
 
     return summary
-
-
-def _solver_version(solver_name: str) -> str | None:
-    """Best-effort installed library version for the solver_configs row."""
-    try:
-        if solver_name == "dirac3":
-            import qci_client  # type: ignore
-            return getattr(qci_client, "__version__", None)
-        if solver_name == "SA_OpenJij":
-            import openjij  # type: ignore
-            return getattr(openjij, "__version__", None)
-        if solver_name in ("gurobi_miqp", "gurobi_nlfunc"):
-            import gurobipy  # type: ignore
-            return ".".join(str(x) for x in gurobipy.gurobi.version())
-    except Exception:
-        return None
-    return None
 
 
 def main() -> None:

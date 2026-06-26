@@ -1,6 +1,6 @@
 # Canonical Solution Schema
 
-**Status:** Draft 0.4.0
+**Status:** Draft 0.5.0
 **Owner:** Chen Mingda
 
 ---
@@ -38,7 +38,7 @@ One row per benchmark batch. Written by the runner before any solves begin.
 | Column | Type | Nullable | Description |
 |---|---|---|---|
 | `run_id` | TEXT PK | No | Unique batch identifier. Format: `run_{YYYYMMDDTHHMMSSZ}_{uuid4_hex[:6]}`. |
-| `solution_schema_version` | TEXT | No | This document's version — `"0.4.0"`. |
+| `solution_schema_version` | TEXT | No | This document's version — `"0.5.0"`. |
 | `created_at` | TEXT | No | ISO 8601 UTC timestamp (column default). |
 | `notes` | TEXT | Yes | Optional description of this benchmark batch. |
 
@@ -46,17 +46,22 @@ One row per benchmark batch. Written by the runner before any solves begin.
 
 ## 3. `solver_configs` Table
 
-One row per unique solver configuration. Written by the runner on first use of a configuration; subsequent runs reuse the existing row.
+One row per unique solver **identity**. Written by the runner on first use of an identity; subsequent runs with the same identity reuse the existing row.
+
+Identity is **content-addressed**: `solver_identity_hash` = SHA-256 over `(solver_name, source_commit, config, environment_digest, dep_lock_digest)`. Any change to the benchmark code commit, the dependency lock, the container/host, or the config forks a new identity — so results from materially different solvers are never pooled under one `solver_config_id`. Provenance is captured by the runner (`main/compiler/solver_io/helpers/identity.py`); runs **refuse a dirty git tree** unless `HUBOBENCH_ALLOW_DIRTY=1`.
 
 | Column | Type | Nullable | Description |
 |---|---|---|---|
-| `solver_config_id` | INTEGER PK AUTOINCREMENT | No | Surrogate key identifying a unique (solver, config) pair. Stable FK for `solutions`. Note: this identifies a *configuration*, not a solver — re-tuning a parameter yields a new `solver_config_id` for the same `solver_name`. |
-| `solver_name` | TEXT | No | `dirac3` \| `gurobi_miqp` \| `gurobi_nlfunc` \| `SA_OpenJij` |
-| `solver_version` | TEXT | Yes | Solver library version string. Null if unavailable. Fetched by the aggregator at config-upsert time, not returned by `decode_response`. |
+| `solver_config_id` | INTEGER PK AUTOINCREMENT | No | Surrogate key for a unique solver identity. Stable FK for `solutions`. |
+| `solver_name` | TEXT | No | `dirac3` \| `gurobi_miqp` \| `gurobi_nlfunc` \| `SA_OpenJij` — the human-readable solver type. |
 | `limits_dossier_version` | TEXT | No | Dossier version governing feasibility thresholds for this config. |
 | `config_json` | TEXT | No | Full solver parameter dict as JSON with sorted keys. |
+| `solver_identity_hash` | TEXT | No | The identity anchor — SHA-256 over name + commit + config + environment + dep-lock. |
+| `source_commit` | TEXT | No | `git HEAD` at run time (`+dirty` if `HUBOBENCH_ALLOW_DIRTY=1` was set). |
+| `environment_digest` | TEXT | No | Container image digest if set (`HUBOBENCH_CONTAINER_DIGEST`), else a host fingerprint. |
+| `dep_lock_digest` | TEXT | No | SHA-256 of `uv.lock`. |
 
-`UNIQUE (solver_name, config_json)` — the natural key the aggregator resolves against to find or create the surrogate `solver_config_id`.
+`UNIQUE (solver_identity_hash)` — the key the aggregator resolves against to find or create the surrogate `solver_config_id`. (`solver_version` was removed; the precise dependency state lives in `dep_lock_digest`.)
 
 ---
 
@@ -159,7 +164,7 @@ How the runner maps `decode_response` output to SQL writes.
 | `samples_rows[i].count` | `samples.count` | Per row |
 | `samples_rows[i].vars` | `samples.vars` | Direct write (already bytes) |
 
-The runner provides `problem_hash`, `solver_config_id`, and `run_id` from its own context; the aggregator provides `solver_version` at config-upsert time. None of these are in the decode output.
+The runner provides `problem_hash`, `solver_config_id`, and `run_id` from its own context; the aggregator captures the run provenance (`source_commit`, `environment_digest`, `dep_lock_digest`) at config-upsert time. None of these are in the decode output.
 
 ---
 
@@ -175,7 +180,7 @@ The runner provides `problem_hash`, `solver_config_id`, and `run_id` from its ow
 | `HARD_REJECT` | Pre-submission feasibility check refused the instance. | Null | Empty |
 | `API_ERROR` | Solver-side error: rejected payload, network failure, license/allocation exhausted. | Null | Empty |
 
-`DONE_STATUSES = (OK, SUBOPTIMAL_GAP)` — the skip query treats these as completed work. `TIMEOUT`, `HARD_REJECT`, and `API_ERROR` are not done and are retried (and upserted in place) on the next run.
+`DONE_STATUSES = (OK, SUBOPTIMAL_GAP, HARD_REJECT)` — the skip query treats these as completed work. `TIMEOUT` and `API_ERROR` are not done and are retried (and upserted in place) on the next run. `HARD_REJECT` is a deliberate, terminal rejection and is never retried. `write_solution` additionally refuses to overwrite any row already in a DONE status unless `force=True`, so a completed result cannot be silently clobbered.
 
 **`FLAGGED` is retired.** In prior versions a pre-submission warning produced `status = FLAGGED`. That conflated a termination state with an annotation. Warnings now live in `flags` and never gate rerun; a warned-but-completed run keeps its real termination status (`OK` / `SUBOPTIMAL_GAP`) and is therefore DONE.
 
@@ -211,4 +216,5 @@ Encoding: `'[]'` means checked and clean; a non-empty list names the fired flags
 | 0.1 | 2026-05-11 | M. Chen | Initial draft |
 | 0.2 | 2026-06-08 | M. Chen | Tightened draft, eliminated unnecessary columns |
 | 0.3.0 | 2026-06-12 | M. Chen | SQL-first redesign. Canonical solution dict replaces JSON file format. Storage schema defined across runs, solver_configs, solutions, samples tables. |
-| 0.4.0 | 2026-06-25 | tamkaize | `flags` is always a JSON list string (`'[]'` when clean), never `None` from a decode; `NULL` reserved for pre-0.4.0 rows. `FLAGGED` status retired (warnings live in `flags`, not the termination status). Version constants centralized in `main/constants.py`; legacy `0.3.0` rows migrated by `main/migrations/` step `m0001_v03_to_v04` (version strings only). |
+| 0.4.0 | 2026-06-25 | tamkaize | `flags` is always a JSON list string (`'[]'` when clean), never `None` from a decode; `NULL` reserved for pre-0.4.0 rows. `FLAGGED` status retired (warnings live in `flags`, not the termination status). Version constants centralized in `main/constants.py`; legacy `0.3.0` rows migrated by `main/migrations/` step `m0001_v03_to_v04` (version strings only). `solver_configs` re-keyed to a content-addressed identity (drop `solver_version`; add `solver_identity_hash` + `source_commit` / `environment_digest` / `dep_lock_digest`; anchor `UNIQUE(solver_identity_hash)`), migrated by `m0002_solver_identity` — see §3. (The stamped solution version was initially held at 0.4.0; subsequently bumped to 0.5.0 — see below.) |
+| 0.5.0 | 2026-06-26 | tamkaize | Stamped solution version bumped to mark the content-addressed `solver_configs` identity (m0002, §3) and a new `write_solution` overwrite guard: a completed row (status in `DONE_STATUSES` = `OK` / `SUBOPTIMAL_GAP` / `HARD_REJECT`) cannot be overwritten unless `force=True`, turning the orchestrator's skip convention into a storage-level guarantee. Retry semantics in the `solution_writer` docstring and `schema.sql` comments corrected to match `DONE_STATUSES` (`HARD_REJECT` is terminal, not retried). Solution-row *columns* are unchanged; existing `runs` re-stamped 0.4.0→0.5.0 by `m0003_solution_v05`. |
