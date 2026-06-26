@@ -93,10 +93,13 @@ CREATE TABLE IF NOT EXISTS runs (
 -- ---------------------------------------------------------------------------
 -- solutions
 -- One row per (problem_hash, solver_id).
--- run_id records the most recent run that wrote the row; failed runs (API_ERROR, TIMEOUT, HARD_REJECT)
--- are updated in place on retry rather than appended as new rows.
+-- run_id records the most recent run that wrote the row. Rows are updated in place
+-- (never appended as new rows): only the transient failures (API_ERROR, TIMEOUT) are
+-- re-run, and a retry overwrites the prior failed row. Completed outcomes
+-- (OK, SUBOPTIMAL_GAP, HARD_REJECT -- the DONE statuses) are terminal; the runner
+-- skips them and write_solution refuses to overwrite them unless force=True.
 -- Every runner writes here directly after decode_response completes.
--- Failed runs (HARD_REJECT, TIMEOUT with no incumbent, API_ERROR) are
+-- Rejected / failed runs (HARD_REJECT, TIMEOUT with no incumbent, API_ERROR) are
 -- written with best_energy = NULL and best_vars_json = NULL.
 -- Only rows where best_energy IS NOT NULL are eligible for label assignment.
 --
