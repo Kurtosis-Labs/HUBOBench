@@ -16,7 +16,7 @@ HUBOBench stores problem instances and solver results as canonical rows in a sin
   - [Step 2 — Write the encode function](#step-2--write-the-encode-function)
   - [Step 3 — Write the decode function](#step-3--write-the-decode-function)
   - [Step 4 — Write the run wrapper](#step-4--write-the-run-wrapper)
-  - [Step 5 — Register in agg_runner](#step-5--register-in-agg_runner)
+  - [Step 5 — Nothing to register (auto-discovery)](#step-5--nothing-to-register-auto-discovery)
   - [Step 6 — Schema reference](#step-6--schema-reference)
 - [Checklist](#checklist)
 
@@ -275,34 +275,20 @@ The required sequence (follow `run_sa_openjij.py` line for line):
 
 The wrapper owns all error handling and all DB writes. Encode and decode stay pure. For an API solver, this is also where credentials load and where the queue/submit/poll lifecycle lives (see `run_dirac3.py` for the three-step API pattern).
 
-### Step 5 — Register in agg_runner
+### Step 5 — Nothing to register (auto-discovery)
 
-Two edits in `main/compiler/agg_runner.py`:
-
-1. Import the wrapper:
-   ```python
-   from main.compiler.solvers import (
-       run_sa_openjij,
-       run_<solver>,        # add
-       ...
-   )
-   ```
-2. Add it to `SOLVER_REGISTRY` (keyed by `SOLVER_NAME`):
-   ```python
-   SOLVER_REGISTRY = {
-       run_sa_openjij.SOLVER_NAME:  run_sa_openjij,
-       run_<solver>.SOLVER_NAME:    run_<solver>,    # add
-       ...
-   }
-   ```
+There is **no registry to edit.** `main/compiler/registry.py` discovers solvers by scanning `main/compiler/solvers/run_*.py` for the run-wrapper contract (`SOLVER_NAME`, `LIMITS_DOSSIER_VERSION`, `DEFAULT_CONFIG`, `run`). Dropping your `run_<solver>.py` into that package registers it automatically; a duplicate `SOLVER_NAME` is a hard error.
 
 Reproducibility provenance — the git commit, `uv.lock` digest, and container/host fingerprint — is captured automatically by the runner and folded into the solver's content-addressed identity (`solver_configs.solver_identity_hash`). There is no per-solver version step to add. Note: runs refuse a dirty git tree unless `HUBOBENCH_ALLOW_DIRTY=1`.
 
-That is the whole registration. agg_runner now resolves the config id, computes the pending set (instances with no completed result under this config; failed attempts retry automatically), and runs your wrapper over each. Verify:
+Confirm it was picked up, then run it (agg_runner resolves the config id, computes the pending set — instances with no completed result under this config; failed attempts retry automatically — and runs your wrapper over each):
 
 ```bash
+python -m main.compiler.agg_runner --list-solvers      # your solver appears here
 python -m main.compiler.agg_runner --solvers <solver>
 ```
+
+To run experiments with config overrides instead of the defaults, declare them in a JSON manifest and use `--manifest` (see `examples/experiments.example.json`) — each `{"solver", "config"}` entry merges overrides onto `DEFAULT_CONFIG`, and a differing config forks a distinct `solver_config_id`. No code edits.
 
 ### Step 6 — Schema reference
 
@@ -333,5 +319,5 @@ A new solver is complete when:
 - [ ] `decode_response` returns the canonical `(solution_row, samples_rows)`; energy recomputed canonically.
 - [ ] `main/compiler/solvers/run_<solver>.py` exports `SOLVER_NAME`, `LIMITS_DOSSIER_VERSION`, `DEFAULT_CONFIG`, `run`.
 - [ ] `run` handles encode failure, solver failure, and success, writing a row in every case.
-- [ ] Imported and registered in `agg_runner.SOLVER_REGISTRY`.
+- [ ] Auto-discovered — appears in `python -m main.compiler.agg_runner --list-solvers` (no registry edit).
 - [ ] `python -m main.compiler.agg_runner --solvers <solver>` runs end to end and writes rows.
