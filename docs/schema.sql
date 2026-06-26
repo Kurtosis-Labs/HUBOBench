@@ -48,21 +48,28 @@ CREATE TABLE IF NOT EXISTS instances (
 
 -- ---------------------------------------------------------------------------
 -- solver_configs
--- One row per unique solver configuration.
--- Surrogate INTEGER PK for cheap joins from solutions.
--- The UNIQUE constraint over (solver_id, solver_path, config_json) is the
--- existence anchor: the application normalises key ordering in config_json,
--- then probes this constraint before insertion. No content hash is stored.
+-- One row per unique solver *identity*. Surrogate INTEGER PK for cheap joins.
+-- Identity is content-addressed: solver_identity_hash = SHA-256 over
+-- (solver_name, source_commit, config, environment_digest, dep_lock_digest)
+-- (see main/compiler/solver_io/helpers/identity.py). The UNIQUE anchor is that
+-- hash, so a change to the code commit, dependency lock, container/host, or
+-- config forks a new identity and results are never pooled across them.
+-- config_json + the provenance components are stored for queryability.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS solver_configs (
 
     solver_config_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    solver_name             TEXT    NOT NULL,   -- dirac3 | gurobi_miqp | SA_OpenJij
-    solver_version          TEXT,               -- library version; NULL if unavailable
+    solver_name             TEXT    NOT NULL,   -- dirac3 | gurobi_miqp | SA_OpenJij | gurobi_nlfunc
     limits_dossier_version  TEXT    NOT NULL,   -- dossier governing feasibility thresholds
     config_json             TEXT    NOT NULL,   -- full parameter dict; normalised key order
 
-    UNIQUE (solver_name, config_json)
+    -- Content-addressed identity
+    solver_identity_hash    TEXT    NOT NULL,   -- sha256(name+commit+config+env+lock); the identity anchor
+    source_commit           TEXT    NOT NULL,   -- git HEAD at run time ('+dirty' if overridden)
+    environment_digest      TEXT    NOT NULL,   -- container image digest, else host fingerprint
+    dep_lock_digest         TEXT    NOT NULL,   -- sha256 of uv.lock
+
+    UNIQUE (solver_identity_hash)
 
 );
 
