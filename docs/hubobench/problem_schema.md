@@ -1,6 +1,6 @@
 # Canonical Problem Schema
 
-**Status:** Draft 0.4.0
+**Status:** Draft 0.5.0
 **Owner:** Chen Mingda
 
 ---
@@ -116,32 +116,19 @@ Required for a deterministic and stable identity hash. All generators (and loade
 
 ```json
 {
-    "objective": {
-        "sense":    "minimize",
-        "constant": <float>,
-        "terms":    [{"coef": <float>, "vars": [<int>, ...]}, ...]
-    },
-    "parameters": {
-        "n_variables":     <int>,
-        "variable_domain": "binary_01"
-    }
+    "constant": <float>,
+    "terms":    [{"coef": <float>, "vars": [<int>, ...]}, ...]
 }
 ```
 
-`sense` participates in the hash even though it is constant, so that identity remains well-defined if a maximisation variant is ever added.
-
-### 6.2 Excluded fields
-
-Everything except the polynomial (including `sense`) and variable parameters is excluded. Schema version, generator metadata, and all derived blocks (diagnostics, rosenberg, ground truth) do not affect problem identity.
-
-### 6.3 Serialisation rules
+### 6.2 Serialisation rules
 
 - **Float:** `repr(float)` semantics — shortest decimal that round-trips. Python 3.7+ `json.dumps` satisfies this. `nan` and `inf` are not permitted.
 - **Integer:** plain decimal, no leading zeros.
 - **JSON:** `json.dumps(..., sort_keys=True, separators=(',', ':'), ensure_ascii=True)`.
 - **Hash:** SHA-256 of the resulting UTF-8 byte string, lowercase hex digest.
 
-Reference implementation: `benchmarks/hash.py :: compute_problem_hash()`. The corpus-integrity check that re-derives and verifies every stored hash against its PK is `benchmarks/verify_corpus.py` (`python -m main.benchmarks.verify_corpus`).
+Reference implementation: `main/benchmarks/hash.py :: compute_problem_hash()`.
 
 ---
 
@@ -182,3 +169,4 @@ Notes:
 | 0.2 | 2026-06-08 | M. Chen | Tightened draft, eliminated unnecessary columns |
 | 0.3.0 | 2026-06-12 | M. Chen | SQL-only redesign. Rosenberg reduction, ground truth, diagnostics, and generator metadata removed from storage — each computed at runtime by the component that needs it. |
 | 0.4.0 | 2026-06-25 | tamkaize | Header/version unified to 0.4.0 (matches the `problem_schema_version` field cell). No problem-schema field changes. Version constants centralized in `main/constants.py`; legacy `0.3.0` rows migrated by migration step `m0001_v03_to_v04`. |
+| 0.5.0 | 2026-06-26 | M.Chen | Hash versions have been updated to only include SQL objective json. `num_variables`, `sense`, `variable_domain` have been dropped |
