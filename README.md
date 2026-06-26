@@ -100,6 +100,12 @@ python -m main.compiler.agg_runner
 # Run a subset
 python -m main.compiler.agg_runner --solvers SA_OpenJij gurobi_miqp
 
+# List discovered solvers (name, dossier version, default config)
+python -m main.compiler.agg_runner --list-solvers
+
+# Run a declared experiment set (solver + config overrides) — no code edits
+python -m main.compiler.agg_runner --manifest examples/experiments.example.json
+
 # Apply pending schema migrations (idempotent; m0001 … m0003)
 python -m main.migrations.run
 
