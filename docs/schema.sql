@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS runs (
 -- Every runner writes here directly after decode_response completes.
 -- Rejected / failed runs (HARD_REJECT, TIMEOUT with no incumbent, API_ERROR) are
 -- written with best_energy = NULL and best_vars_json = NULL.
--- Only rows where best_energy IS NOT NULL are eligible for label assignment.
+-- Only rows where best_energy IS NOT NULL are eligible for benchmarking.
 --
 -- Derived fields intentionally excluded (compute via samples JOIN):
 --     n_samples               → SUM(count)    WHERE solution_id = ?
