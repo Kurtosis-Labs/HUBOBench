@@ -95,10 +95,10 @@ agg_runner  (main/compiler/agg_runner.py)        ← orchestrator: SOLVER_REGIST
   (pure: cardinality penalty, classifier features, hash, SQL row) → `encoding/{apply_cardinality,
   compute_diagnostics}.py`. `config.py` holds generator constants (`EPS_COEF`, …); the schema versions live
   in `main/constants.py` (`PROBLEM_SCHEMA_VERSION = "0.4.0"`, `SOLUTION_SCHEMA_VERSION = "0.5.0"`), migrated by `main/migrations/`.
-- **`main/benchmarks/hash.py`** — `compute_problem_hash` is the live hash used by `instance_builder`. The same
-  file also carries a legacy `fill_hashes` / `compute_solution_hash` API built around a nested "canonical
-  solution dict" that the current SQL-era write path (`solution_writer`) does **not** use — don't wire new
-  code to it without checking it's still relevant.
+- **`main/benchmarks/hash.py`** — now a single-purpose module: `compute_problem_hash` (the live content hash
+  used by `instance_builder` and `benchmarks/verify_corpus`). The legacy "canonical solution dict" API
+  (`fill_hashes` / `compute_solution_hash` / `compute_solver_config_hash` / `derive_instance_id`) was removed —
+  it was unwired by the SQL-era write path (`solution_writer`).
 
 ### Database (`docs/schema.sql` is the table contract)
 
@@ -137,7 +137,7 @@ on-disk copy of the polynomial — no instance files exist), **`solver_configs`*
 - **Two timing fields:** `wall_clock_s` (end-to-end) and `algorithmic_time_s` (solver-internal; equals wall
   clock for in-process solvers like SA).
 - **Naming drift to be aware of:** code emits `limits_dossier_version` (plural); some schema docs say
-  `limit_dossier_version` (singular). `hash.py` reads either spelling tolerantly.
+  `limit_dossier_version` (singular). The two refer to the same field.
 
 ## Adding a solver
 
