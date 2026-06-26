@@ -15,10 +15,6 @@ Public API:
                                      solution dict and set solution_id.
                                      Call after decode_response(), before saving.
 
-    verify_problem_hash(instance)    Re-derive the problem hash from scratch
-                                     and check it matches the stored value.
-                                     Used by the evaluator at score time.
-
     compute_problem_hash(instance)   → 64-char hex string
     compute_solver_config_hash(ctx)  → 64-char hex string
     compute_solution_hash(...)       → 64-char hex string
@@ -281,30 +277,10 @@ def fill_hashes(solution: dict[str, Any]) -> dict[str, Any]:
     return solution
 
 
-# ---------------------------------------------------------------------------
-# §5. Problem hash verification — used by the evaluator
-# ---------------------------------------------------------------------------
-
-
-def verify_problem_hash(instance: dict[str, Any]) -> bool:
-    """Verify the stored problem hash against a fresh computation.
-
-    Re-derives the problem hash from scratch and checks it matches
-    instance["reproducibility_hash"]. A mismatch indicates either a
-    generator bug (diagnostics computed from a different polynomial than
-    stored) or file corruption.
-
-    Used by the evaluator before scoring any solution linked to this instance.
-
-    Args:
-        instance: canonical problem instance (problem_schema.md).
-
-    Returns:
-        True iff the stored hash matches the computed hash.
-    """
-    stored   = instance.get("reproducibility_hash", "")
-    computed = compute_problem_hash(instance)
-    return stored == computed
+# Note: instances-corpus integrity (re-derive each problem_hash from its stored
+# row and confirm it equals the PK) lives in benchmarks/verify_corpus.py, which
+# reuses compute_problem_hash above. It operates on SQL rows, not the legacy
+# canonical-instance dict.
 
 
 # ---------------------------------------------------------------------------
