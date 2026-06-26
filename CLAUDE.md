@@ -51,6 +51,13 @@ Apply pending schema migrations (idempotent tracking-table runner; ordered steps
 python -m main.migrations.run        # m0001 (0.3→0.4 versions), m0002 (content-addressed solver identity), m0003 (solution 0.4→0.5)
 ```
 
+Verify corpus integrity (re-derive every `problem_hash` from its stored row; exits non-zero on any mismatch).
+This is an explicit check — `load_instance` trusts the row on the hot path; run this in CI / before scoring / after any manual DB edit:
+
+```bash
+python -m main.benchmarks.verify_corpus   # OK if every problem_hash still matches its content
+```
+
 There is **no test suite and no linter/formatter** configured.
 
 API/credentialed solvers read `.env` at the repo root (copy `.env.example`): `QCI_API_URL` + `QCI_TOKEN`
