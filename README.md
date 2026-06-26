@@ -68,9 +68,6 @@ hubobench/                                # repo root
 │   │   │       └── decode_common.py      # shared decode utilities
 │   │   └── reduction/                    # degree-≥3 → quadratic reduction
 │   │       └── rosenberg.py              # Rosenberg substitution (aux vars)
-│   ├── migrations/                       # idempotent schema-migration runner
-│   │   ├── run.py
-│   │   └── steps/                        # m0001 … m0003
 │   └── benchmarks/
 │       ├── hash.py                       # canonical problem hashing
 │       └── verify_corpus.py              # corpus integrity check (command)
@@ -105,9 +102,6 @@ python -m main.compiler.agg_runner --list-solvers
 
 # Run a declared experiment set (solver + config overrides) — no code edits
 python -m main.compiler.agg_runner --manifest examples/experiments.example.json
-
-# Apply pending schema migrations (idempotent; m0001 … m0003)
-python -m main.migrations.run
 
 # Verify corpus integrity (re-derive every problem_hash from its stored row)
 python -m main.benchmarks.verify_corpus
