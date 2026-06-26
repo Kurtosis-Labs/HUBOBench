@@ -1,6 +1,6 @@
 # Canonical Solution Schema
 
-**Status:** Draft 0.4.0
+**Status:** Draft 0.5.0
 **Owner:** Chen Mingda
 
 ---
@@ -38,7 +38,7 @@ One row per benchmark batch. Written by the runner before any solves begin.
 | Column | Type | Nullable | Description |
 |---|---|---|---|
 | `run_id` | TEXT PK | No | Unique batch identifier. Format: `run_{YYYYMMDDTHHMMSSZ}_{uuid4_hex[:6]}`. |
-| `solution_schema_version` | TEXT | No | This document's version — `"0.4.0"`. |
+| `solution_schema_version` | TEXT | No | This document's version — `"0.5.0"`. |
 | `created_at` | TEXT | No | ISO 8601 UTC timestamp (column default). |
 | `notes` | TEXT | Yes | Optional description of this benchmark batch. |
 
@@ -216,4 +216,5 @@ Encoding: `'[]'` means checked and clean; a non-empty list names the fired flags
 | 0.1 | 2026-05-11 | M. Chen | Initial draft |
 | 0.2 | 2026-06-08 | M. Chen | Tightened draft, eliminated unnecessary columns |
 | 0.3.0 | 2026-06-12 | M. Chen | SQL-first redesign. Canonical solution dict replaces JSON file format. Storage schema defined across runs, solver_configs, solutions, samples tables. |
-| 0.4.0 | 2026-06-25 | tamkaize | `flags` is always a JSON list string (`'[]'` when clean), never `None` from a decode; `NULL` reserved for pre-0.4.0 rows. `FLAGGED` status retired (warnings live in `flags`, not the termination status). Version constants centralized in `main/constants.py`; legacy `0.3.0` rows migrated by `main/migrations/` step `m0001_v03_to_v04` (version strings only). `solver_configs` re-keyed to a content-addressed identity (drop `solver_version`; add `solver_identity_hash` + `source_commit` / `environment_digest` / `dep_lock_digest`; anchor `UNIQUE(solver_identity_hash)`), migrated by `m0002_solver_identity` — see §3. (Solution-row schema unchanged, so the stamped version is held at 0.4.0.) |
+| 0.4.0 | 2026-06-25 | tamkaize | `flags` is always a JSON list string (`'[]'` when clean), never `None` from a decode; `NULL` reserved for pre-0.4.0 rows. `FLAGGED` status retired (warnings live in `flags`, not the termination status). Version constants centralized in `main/constants.py`; legacy `0.3.0` rows migrated by `main/migrations/` step `m0001_v03_to_v04` (version strings only). `solver_configs` re-keyed to a content-addressed identity (drop `solver_version`; add `solver_identity_hash` + `source_commit` / `environment_digest` / `dep_lock_digest`; anchor `UNIQUE(solver_identity_hash)`), migrated by `m0002_solver_identity` — see §3. (The stamped solution version was initially held at 0.4.0; subsequently bumped to 0.5.0 — see below.) |
+| 0.5.0 | 2026-06-26 | tamkaize | Stamped solution version bumped to mark the content-addressed `solver_configs` identity (m0002, §3) and a new `write_solution` overwrite guard: a completed row (status in `DONE_STATUSES` = `OK` / `SUBOPTIMAL_GAP` / `HARD_REJECT`) cannot be overwritten unless `force=True`, turning the orchestrator's skip convention into a storage-level guarantee. Retry semantics in the `solution_writer` docstring and `schema.sql` comments corrected to match `DONE_STATUSES` (`HARD_REJECT` is terminal, not retried). Solution-row *columns* are unchanged; existing `runs` re-stamped 0.4.0→0.5.0 by `m0003_solution_v05`. |

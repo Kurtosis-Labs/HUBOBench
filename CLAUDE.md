@@ -48,7 +48,7 @@ python -m main.compiler.agg_runner --solvers SA_OpenJij gurobi_miqp --db data/hu
 Apply pending schema migrations (idempotent tracking-table runner; ordered steps under `main/migrations/`):
 
 ```bash
-python -m main.migrations.run        # m0001 (0.3→0.4 versions), m0002 (content-addressed solver identity)
+python -m main.migrations.run        # m0001 (0.3→0.4 versions), m0002 (content-addressed solver identity), m0003 (solution 0.4→0.5)
 ```
 
 There is **no test suite and no linter/formatter** configured.
@@ -87,7 +87,7 @@ agg_runner  (main/compiler/agg_runner.py)        ← orchestrator: SOLVER_REGIST
 - **`main/data/`** — `synthetic_generator.py` (entry point) → `encoding/instance_builder.py:assemble_instance`
   (pure: cardinality penalty, classifier features, hash, SQL row) → `encoding/{apply_cardinality,
   compute_diagnostics}.py`. `config.py` holds generator constants (`EPS_COEF`, …); the schema versions live
-  in `main/constants.py` (`PROBLEM_SCHEMA_VERSION`/`SOLUTION_SCHEMA_VERSION = "0.4.0"`), migrated by `main/migrations/`.
+  in `main/constants.py` (`PROBLEM_SCHEMA_VERSION = "0.4.0"`, `SOLUTION_SCHEMA_VERSION = "0.5.0"`), migrated by `main/migrations/`.
 - **`main/benchmarks/hash.py`** — `compute_problem_hash` is the live hash used by `instance_builder`. The same
   file also carries a legacy `fill_hashes` / `compute_solution_hash` API built around a nested "canonical
   solution dict" that the current SQL-era write path (`solution_writer`) does **not** use — don't wire new
@@ -115,12 +115,16 @@ on-disk copy of the polynomial — no instance files exist), **`solver_configs`*
   `solver_config_id`, under which every instance is "pending" again — so a changed solver re-runs the corpus
   rather than overwriting another solver's results. Runs **refuse a dirty git tree** (`HUBOBENCH_ALLOW_DIRTY=1`
   overrides, marking the commit `+dirty`). There is **no `solver_version` column** (`dep_lock_digest` supersedes it).
-- **`solutions` upserts in place** on `(problem_hash, solver_config_id)`; `samples` for that solution are
+- **`solutions` upserts in place** on `(problem_hash, solver_config_id)` (the conflict key — a write overwrites
+  iff that pair already exists; the `DO UPDATE` has no `WHERE`/status check); `samples` for that solution are
   deleted and rewritten on every (re)write, so a retry never mixes old and new samples.
+- **`write_solution` refuses to overwrite a DONE row** (status in `DONE_STATUSES`) unless `force=True` — a
+  storage-level guard so a direct/out-of-band write can't clobber a finished result. The orchestrator already
+  never routes a DONE instance here, so in normal runs the guard never fires.
 - **Skip / retry is driven by `solution_writer.DONE_STATUSES = ("OK", "SUBOPTIMAL_GAP", "HARD_REJECT")`.**
-  A `HARD_REJECT` is **terminal** — it is *not* retried. Only `API_ERROR` and `TIMEOUT` are re-run.
-  ⚠️ The `solution_writer` module docstring and `schema.sql` comments claim `HARD_REJECT` is retried; the
-  `DONE_STATUSES` constant (source of truth) says otherwise. Trust the constant.
+  A `HARD_REJECT` is **terminal** — it is *not* retried. Only `API_ERROR` and `TIMEOUT` are re-run. The
+  `solution_writer` docstring and `schema.sql` comments are aligned to this (a prior drift that called
+  `HARD_REJECT` retried was fixed alongside the write guard).
 - **Failed runs still write a row** (`best_energy = NULL`); only non-null rows are eligible for downstream
   comparison.
 - **Two timing fields:** `wall_clock_s` (end-to-end) and `algorithmic_time_s` (solver-internal; equals wall

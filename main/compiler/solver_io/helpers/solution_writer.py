@@ -15,11 +15,18 @@ Identity model (agreed):
                  parent solution row is (re)written, so a retried run never
                  leaves stale samples from the previous attempt.
 
-Skip logic:
-    An instance is considered DONE for a given solver_config_id iff a
-    solutions row exists for it with status IN ('OK','FLAGGED','SUBOPTIMAL_GAP').
-    Failed attempts (API_ERROR, TIMEOUT, HARD_REJECT) are NOT done and are
-    re-run (and updated in place).
+Skip logic (source of truth: DONE_STATUSES below):
+    An instance is DONE for a given solver_config_id iff a solutions row exists
+    for it with status IN ('OK','SUBOPTIMAL_GAP','HARD_REJECT'). Only the
+    transient failures (API_ERROR, TIMEOUT) are NOT done and are re-run, updated
+    in place. HARD_REJECT is terminal — a deliberate rejection, never retried.
+
+Write guard:
+    write_solution refuses to overwrite a row already in a DONE status (unless
+    force=True). The orchestrator already never routes a DONE instance here, so
+    this only ever blocks an out-of-band / direct write — it turns the skip
+    convention into a storage-level guarantee that a completed result cannot be
+    silently clobbered.
 """
 
 from __future__ import annotations
@@ -142,6 +149,7 @@ def write_solution(
     run_id: str,
     solution_row: dict[str, Any],
     samples_rows: list[dict[str, Any]],
+    force: bool = False,
 ) -> int:
     """Upsert one solution and rewrite its samples. Returns solution_id.
 
@@ -151,14 +159,22 @@ def write_solution(
     on (problem_hash, solver_config_id): a new instance inserts, an existing
     one (e.g. a prior failure) is updated in place with the new run_id.
 
+    A completed result is protected: if a row already exists for this
+    (problem_hash, solver_config_id) with a status in DONE_STATUSES, the write
+    is refused (ValueError) unless force=True. In normal operation the
+    orchestrator never routes a DONE instance here, so this only ever fires for
+    an out-of-band / direct write — making "don't clobber a finished result" a
+    storage-level guarantee rather than a convention upstream.
+
     samples_rows each carry: sample_rank, energy, count, vars (raw bytes).
     They must NOT carry solution_id — it is stamped here after the parent row
     is known. Existing samples for the solution are deleted first so a retry
     never mixes old and new samples. Gurobi passes samples_rows=[].
 
     Raises:
-        ValueError: if solution_row has stray/missing outcome keys, or a
-            samples row is missing a required field or carries solution_id.
+        ValueError: if solution_row has stray/missing outcome keys, if a
+            samples row is missing a required field or carries solution_id, or
+            if it would overwrite a DONE row without force=True.
     """
     # ── validate the outcome contract ────────────────────────────────────
     got = set(solution_row)
@@ -168,6 +184,20 @@ def write_solution(
             f"solution_row outcome mismatch for problem_hash={problem_hash}: "
             f"missing={sorted(expected - got)} stray={sorted(got - expected)}"
         )
+
+    # ── refuse to clobber a completed result (storage-level guarantee) ────
+    if not force:
+        prior = conn.execute(
+            "SELECT status FROM solutions "
+            "WHERE problem_hash = ? AND solver_config_id = ?",
+            (problem_hash, solver_config_id),
+        ).fetchone()
+        if prior is not None and prior[0] in DONE_STATUSES:
+            raise ValueError(
+                f"refusing to overwrite a completed solution (status={prior[0]}) "
+                f"for problem_hash={problem_hash}, solver_config_id={solver_config_id}; "
+                f"pass force=True to override."
+            )
 
     full_row = {
         "problem_hash":     problem_hash,
