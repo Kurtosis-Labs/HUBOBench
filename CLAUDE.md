@@ -31,6 +31,11 @@ On a fresh clone, build it from the schema before anything else:
 python -c "import sqlite3; sqlite3.connect('data/hubobench.db').executescript(open('docs/schema.sql').read())"
 ```
 
+`docs/schema.sql` is the **single source of truth** for the schema: a fresh DB is born at the
+current version, so there is no migration step. (The live corpus was brought to the current
+schema by a one-time migration that has since been removed; the `schema_migrations` table it
+leaves on already-migrated DBs is a harmless historical record.)
+
 Generate instances, then run solvers:
 
 ```bash
@@ -52,12 +57,6 @@ Solvers are **discovered dynamically** (`main/compiler/registry.py` scans `compi
 run-wrapper contract) — adding a solver needs no registry edit. `--manifest` runs experiments declared as data
 (`main/compiler/manifest.py`): each `{"solver", "config"}` entry merges config overrides onto `DEFAULT_CONFIG`,
 and since config is part of the content identity, differing configs fork distinct `solver_config_id`s.
-
-Apply pending schema migrations (idempotent tracking-table runner; ordered steps under `main/migrations/`):
-
-```bash
-python -m main.migrations.run        # m0001 (0.3→0.4 versions), m0002 (content-addressed solver identity), m0003 (solution 0.4→0.5)
-```
 
 Verify corpus integrity (re-derive every `problem_hash` from its stored row; exits non-zero on any mismatch).
 This is an explicit check — `load_instance` trusts the row on the hot path; run this in CI / before scoring / after any manual DB edit:
@@ -102,7 +101,7 @@ agg_runner  (main/compiler/agg_runner.py)        ← orchestrator: SOLVER_REGIST
 - **`main/data/`** — `synthetic_generator.py` (entry point) → `encoding/instance_builder.py:assemble_instance`
   (pure: cardinality penalty, classifier features, hash, SQL row) → `encoding/{apply_cardinality,
   compute_diagnostics}.py`. `config.py` holds generator constants (`EPS_COEF`, …); the schema versions live
-  in `main/constants.py` (`PROBLEM_SCHEMA_VERSION = "0.4.0"`, `SOLUTION_SCHEMA_VERSION = "0.5.0"`), migrated by `main/migrations/`.
+  in `main/constants.py` (`PROBLEM_SCHEMA_VERSION = "0.4.0"`, `SOLUTION_SCHEMA_VERSION = "0.5.0"`).
 - **`main/benchmarks/hash.py`** — now a single-purpose module: `compute_problem_hash` (the live content hash
   used by `instance_builder` and `benchmarks/verify_corpus`). The legacy "canonical solution dict" API
   (`fill_hashes` / `compute_solution_hash` / `compute_solver_config_hash` / `derive_instance_id`) was removed —
