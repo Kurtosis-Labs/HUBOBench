@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from main.benchmarks.hash import compute_problem_hash
@@ -67,17 +68,33 @@ class Mismatch:
     computed:     str   # what the stored content actually hashes to
 
 
-def verify_corpus(conn: sqlite3.Connection) -> tuple[int, list[Mismatch]]:
-    """Verify every instance row. Returns (n_checked, mismatches)."""
-    rows = conn.execute(
-        "SELECT problem_hash, num_variables, objective_json FROM instances"
-    ).fetchall()
+def verify_corpus(
+    conn: sqlite3.Connection,
+    *,
+    progress: Callable[[int], None] | None = None,
+) -> tuple[int, list[Mismatch]]:
+    """Verify every instance row. Returns (n_checked, mismatches).
+
+    Streams the instances table one row at a time — the sqlite3 cursor fetches
+    lazily, so peak memory is bounded by a single instance's objective_json even
+    on a multi-GB corpus. (Never `fetchall()` here: a large corpus is many GB of
+    polynomials and would OOM.)
+
+    progress: optional callback invoked with the running count every 500 rows,
+    for CLI feedback on a long run.
+    """
+    n = 0
     mismatches: list[Mismatch] = []
-    for stored_hash, num_variables, objective_json in rows:
+    for stored_hash, num_variables, objective_json in conn.execute(
+        "SELECT problem_hash, num_variables, objective_json FROM instances"
+    ):
         computed = recompute_problem_hash(num_variables, objective_json)
         if computed != stored_hash:
             mismatches.append(Mismatch(problem_hash=str(stored_hash), computed=computed))
-    return len(rows), mismatches
+        n += 1
+        if progress is not None and n % 500 == 0:
+            progress(n)
+    return n, mismatches
 
 
 def main() -> None:
@@ -91,7 +108,11 @@ def main() -> None:
 
     conn = sqlite3.connect(args.db)
     try:
-        n, mismatches = verify_corpus(conn)
+        total = conn.execute("SELECT COUNT(*) FROM instances").fetchone()[0]
+        print(f"[verify] checking {total} instance(s)…")
+        n, mismatches = verify_corpus(
+            conn, progress=lambda k: print(f"[verify]   …{k}/{total}", flush=True)
+        )
     finally:
         conn.close()
 
