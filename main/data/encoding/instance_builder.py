@@ -27,23 +27,17 @@ Public API:
 from __future__ import annotations
 
 import json
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-_SRC = Path(__file__).parent.parent
-if str(_SRC) not in sys.path:
-    sys.path.insert(0, str(_SRC))
-
-from config import SCHEMA_VERSION
-from encoding.apply_cardinality import (
+from main.constants import PROBLEM_SCHEMA_VERSION
+from main.data.encoding.apply_cardinality import (
     apply_cardinality_penalty,
     cardinality_k_for_variant,
     compute_penalty_M,
 )
-from encoding.compute_diagnostics import compute_instance_features
-from benchmarks.hash import compute_problem_hash
+from main.data.encoding.compute_diagnostics import compute_instance_features
+from main.benchmarks.hash import compute_problem_hash
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -260,7 +254,7 @@ def assemble_instance(
     # ── §7: Assemble SQL row (keys == INSTANCE_COLUMNS) ───────────────────
     sql_row: dict[str, Any] = {
         "problem_hash":           rep_hash,
-        "problem_schema_version": SCHEMA_VERSION,
+        "problem_schema_version": PROBLEM_SCHEMA_VERSION,
         "created_at":             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "num_variables":          n_variables,
         "max_degree":             features["max_degree"],

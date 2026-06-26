@@ -39,31 +39,33 @@ The mental model: **agg_runner** is the conductor, the **run wrapper** is one mu
 ## Repository layout
 
 ```
-hubobench/
+hubobench/                                # repo root
 ├── data/
-│   ├── hubobench.db                      # canonical instances + results
-│   ├── config.py                         # configurations for gnenerator
-│   ├── synthetic_generator.py            # End point for generator
-│   └── encoding/                         # Helpers for synthetic generator
-│       ├── instance_builder.py
-│       ├── compute_diagnostics.py
-│       └── apply_cardinality
-├── compiler/
-│   ├── agg_runner.py                     # entry point; solver registry
-│   ├── solvers/                          # run wrappers (one per solver)
-│   │   ├── run_sa_openjij.py
-│   │   ├── run_gurobi_miqp.py
-│   │   └── ...
-│   └── solver_io/                        # encode/decode (one per solver)
-│       ├── sa_openjij.py
-│       ├── gurobi_miqp.py
-│       ├── ...
-│       └── helpers/
-│           ├── instance_loader.py        # load_instance(conn, problem_hash)
-│           ├── solution_writer.py        # write_solution(...) + config/run helpers
-│           └── decode_common.py          # shared decode utilities
-├── benchmarks/
-│   └── hash.py                           # canonical problem hashing
+│   └── hubobench.db                      # canonical instances + results (gitignored, runtime)
+├── main/                                 # the installable package (import root)
+│   ├── data/
+│   │   ├── config.py                     # generator config + shared constants
+│   │   ├── synthetic_generator.py        # generator entry point
+│   │   └── encoding/                     # generator helpers
+│   │       ├── instance_builder.py
+│   │       ├── compute_diagnostics.py
+│   │       └── apply_cardinality.py
+│   ├── compiler/
+│   │   ├── agg_runner.py                 # entry point; solver registry
+│   │   ├── solvers/                      # run wrappers (one per solver)
+│   │   │   ├── run_sa_openjij.py
+│   │   │   ├── run_gurobi_miqp.py
+│   │   │   └── ...
+│   │   └── solver_io/                    # encode/decode (one per solver)
+│   │       ├── sa_openjij.py
+│   │       ├── gurobi_miqp.py
+│   │       ├── ...
+│   │       └── helpers/
+│   │           ├── instance_loader.py    # load_instance(conn, problem_hash)
+│   │           ├── solution_writer.py    # write_solution(...) + config/run helpers
+│   │           └── decode_common.py      # shared decode utilities
+│   └── benchmarks/
+│       └── hash.py                       # canonical problem hashing
 ├── docs/
 │   ├── limits/                           # limit dossiers
 │   │   ├── dossier_template.md           # template for new limits dossiers
@@ -72,6 +74,7 @@ hubobench/
 │   └── hubobench/
 │       ├── problem_schema.md             # canonical instance shape
 │       └── solution_schema.md            # canonical solution dict + SQL schema
+├── pyproject.toml                        # deps + hatchling packaging (package = main)
 └── README.md                             # Project description
 ```
 
@@ -81,13 +84,13 @@ hubobench/
 
 ```bash
 # Generate synthetic instances into hubobench.db
-python -m synthetic_generator --degree 4 --density 0.3 --dr 100
+python -m main.data.synthetic_generator --degree 4 --density 0.3 --dr 100
 
 # Run all registered solvers over all pending instances
-python -m compiler.agg_runner
+python -m main.compiler.agg_runner
 
 # Run a subset
-python -m compiler.agg_runner --solvers SA_OpenJij gurobi_miqp
+python -m main.compiler.agg_runner --solvers SA_OpenJij gurobi_miqp
 ```
 
 ---
@@ -100,7 +103,7 @@ The data flow you are slotting into:
 
 ```
 agg_runner
-   └─ run wrapper (compiler/solvers/run_<solver>.py)
+   └─ run wrapper (main/compiler/solvers/run_<solver>.py)
         ├─ load_instance(conn, problem_hash)        ← reads canonical instance
         ├─ encode_problem(...)   ─┐
         │                         ├─ solver_io/<solver>.py   (the part you write)
@@ -125,7 +128,7 @@ A dossier describes only the solver. It must not reference HUBOBench internals, 
 
 ### Step 2 — Write the encode function
 
-Create `compiler/solver_io/<solver>.py`. Encode translates a canonical instance into the solver's native input.
+Create `main/compiler/solver_io/<solver>.py`. Encode translates a canonical instance into the solver's native input.
 
 **Canonical instance shape** (from `problem_schema.md` §4 — read it before writing this):
 
@@ -203,7 +206,7 @@ def decode_response(
 
 **`samples_rows`** (stochastic solvers; empty list for exact solvers like Gurobi): each row `{rank, energy, count, vars}`, sorted by energy ascending, rank 0 = best. See schema §5–6.
 
-Use the shared helpers in `compiler/solver_io/helpers/decode_common.py` rather than re-implementing:
+Use the shared helpers in `main/compiler/solver_io/helpers/decode_common.py` rather than re-implementing:
 
 | Helper | Purpose |
 |---|---|
@@ -219,7 +222,7 @@ Provide a `build_failure_row(status, wall_clock_s=0.0)` helper returning the `(s
 
 ### Step 4 — Write the run wrapper
 
-Create `compiler/solvers/run_<solver>.py`. This is the orchestrator: it is the only layer that touches both the database and the live solver.
+Create `main/compiler/solvers/run_<solver>.py`. This is the orchestrator: it is the only layer that touches both the database and the live solver.
 
 It must expose three module-level names that `agg_runner` reads:
 
@@ -254,11 +257,11 @@ The wrapper owns all error handling and all DB writes. Encode and decode stay pu
 
 ### Step 5 — Register in agg_runner
 
-Two edits in `compiler/agg_runner.py`:
+Two edits in `main/compiler/agg_runner.py`:
 
 1. Import the wrapper:
    ```python
-   from compiler.solvers import (
+   from main.compiler.solvers import (
        run_sa_openjij,
        run_<solver>,        # add
        ...
@@ -278,7 +281,7 @@ If the solver reports an installed library version, add a branch to `_solver_ver
 That is the whole registration. agg_runner now resolves the config id, computes the pending set (instances with no completed result under this config; failed attempts retry automatically), and runs your wrapper over each. Verify:
 
 ```bash
-python -m compiler.agg_runner --solvers <solver>
+python -m main.compiler.agg_runner --solvers <solver>
 ```
 
 ### Step 6 — Schema reference
@@ -305,10 +308,10 @@ Key invariants to respect:
 A new solver is complete when:
 
 - [ ] `dossiers/<solver>_limits.md` exists, version pinned, §3 and §4 filled.
-- [ ] `compiler/solver_io/<solver>.py` exports `SOLVER_NAME`, `LIMITS_DOSSIER_VERSION`, `encode_problem`, `decode_response`, `build_failure_row`.
+- [ ] `main/compiler/solver_io/<solver>.py` exports `SOLVER_NAME`, `LIMITS_DOSSIER_VERSION`, `encode_problem`, `decode_response`, `build_failure_row`.
 - [ ] `encode_problem` raises on dossier §3 hard limits, flags on §4 soft limits, performs no I/O.
 - [ ] `decode_response` returns the canonical `(solution_row, samples_rows)`; energy recomputed canonically.
-- [ ] `compiler/solvers/run_<solver>.py` exports `SOLVER_NAME`, `LIMITS_DOSSIER_VERSION`, `DEFAULT_CONFIG`, `run`.
+- [ ] `main/compiler/solvers/run_<solver>.py` exports `SOLVER_NAME`, `LIMITS_DOSSIER_VERSION`, `DEFAULT_CONFIG`, `run`.
 - [ ] `run` handles encode failure, solver failure, and success, writing a row in every case.
 - [ ] Imported and registered in `agg_runner.SOLVER_REGISTRY`.
-- [ ] `python -m compiler.agg_runner --solvers <solver>` runs end to end and writes rows.
+- [ ] `python -m main.compiler.agg_runner --solvers <solver>` runs end to end and writes rows.

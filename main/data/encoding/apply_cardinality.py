@@ -14,7 +14,7 @@ M is calibrated per-instance as 10 × max|coef in base objective|
 """
 
 from __future__ import annotations
-from config import CARDINALITY_M_FACTOR, EPS_COEF
+from main.data.config import CARDINALITY_M_FACTOR, EPS_COEF
 
 
 def compute_penalty_M(coef_table: dict[tuple, float]) -> float:

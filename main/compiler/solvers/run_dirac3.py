@@ -20,9 +20,9 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from compiler.solver_io import dirac3
-from compiler.solver_io.helpers.instance_loader import load_instance
-from compiler.solver_io.helpers.solution_writer import write_solution
+from main.compiler.solver_io import dirac3
+from main.compiler.solver_io.helpers.instance_loader import load_instance
+from main.compiler.solver_io.helpers.solution_writer import write_solution
 
 # Load .env from the repo root explicitly so credentials resolve regardless of
 # the process CWD (the aggregator may be launched from anywhere). run_dirac3 is

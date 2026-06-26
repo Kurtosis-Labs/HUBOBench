@@ -1,6 +1,6 @@
-"""compiler/solvers/run_gurobi_miqp.py
+"""compiler/solvers/run_gurobi_nlfunc.py
 
-Gurobi miqp orchestrator. Loads from hubobench.db, builds the model via
+Gurobi nlfunc orchestrator. Loads from hubobench.db, builds the model via
 the solver_io, runs optimize(), decodes into a preshaped outcome row (no
 samples), and writes it via the shared writer.
 """
@@ -11,12 +11,12 @@ import sqlite3
 import time
 from typing import Any
 
-from compiler.solver_io import gurobi_miqp
-from compiler.solver_io.helpers.instance_loader import load_instance
-from compiler.solver_io.helpers.solution_writer import write_solution
+from main.compiler.solver_io import gurobi_nlfunc
+from main.compiler.solver_io.helpers.instance_loader import load_instance
+from main.compiler.solver_io.helpers.solution_writer import write_solution
 
-SOLVER_NAME = gurobi_miqp.SOLVER_NAME
-LIMITS_DOSSIER_VERSION = gurobi_miqp.LIMITS_DOSSIER_VERSION
+SOLVER_NAME = gurobi_nlfunc.SOLVER_NAME
+LIMITS_DOSSIER_VERSION = gurobi_nlfunc.LIMITS_DOSSIER_VERSION
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "TimeLimit":              300.0,
@@ -39,11 +39,11 @@ def run(
 
     # ----- Encode -----
     try:
-        model_state, flagged = gurobi_miqp.encode_problem(
+        model_state, flagged = gurobi_nlfunc.encode_problem(
             inst.objective, inst.num_variables, inst.max_degree, config
         )
     except (ImportError, ValueError):
-        sol_row, samp = gurobi_miqp.build_failure_row("API_ERROR")
+        sol_row, samp = gurobi_nlfunc.build_failure_row("API_ERROR")
         write_solution(conn, problem_hash=problem_hash,
                        solver_config_id=solver_config_id, run_id=run_id,
                        solution_row=sol_row, samples_rows=samp)
@@ -55,7 +55,7 @@ def run(
     try:
         model.optimize()
     except Exception:
-        sol_row, samp = gurobi_miqp.build_failure_row(
+        sol_row, samp = gurobi_nlfunc.build_failure_row(
             "API_ERROR", wall_clock_s=time.perf_counter() - t0
         )
         write_solution(conn, problem_hash=problem_hash,
@@ -65,7 +65,7 @@ def run(
     model_state["wall_clock_s"] = time.perf_counter() - t0
 
     # ----- Decode + persist -----
-    sol_row, samp = gurobi_miqp.decode_response(
+    sol_row, samp = gurobi_nlfunc.decode_response(
         model_state, inst.objective, inst.num_variables, flagged
     )
     write_solution(conn, problem_hash=problem_hash,

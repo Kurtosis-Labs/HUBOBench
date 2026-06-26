@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from compiler.solver_io.helpers.decode_common import (
+from main.compiler.solver_io.helpers.decode_common import (
     group_samples,
     build_sample_rows,
     best_from_samples,

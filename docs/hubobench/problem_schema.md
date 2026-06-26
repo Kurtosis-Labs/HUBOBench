@@ -1,6 +1,6 @@
 # Canonical Problem Schema
 
-**Status:** Draft 0.3.0
+**Status:** Draft 0.4.0
 **Owner:** Chen Mingda
 
 ---
@@ -181,3 +181,4 @@ Notes:
 | 0.1 | 2026-05-11 | M. Chen | Initial draft |
 | 0.2 | 2026-06-08 | M. Chen | Tightened draft, eliminated unnecessary columns |
 | 0.3.0 | 2026-06-12 | M. Chen | SQL-only redesign. Rosenberg reduction, ground truth, diagnostics, and generator metadata removed from storage — each computed at runtime by the component that needs it. |
+| 0.4.0 | 2026-06-25 | tamkaize | Header/version unified to 0.4.0 (matches the `problem_schema_version` field cell). No problem-schema field changes. Version constants centralized in `main/constants.py`; legacy `0.3.0` rows migrated by `main/migrations/` step `m0001_v03_to_v04`. |

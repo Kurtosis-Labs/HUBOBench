@@ -28,19 +28,19 @@ import time
 import uuid
 from typing import Any
 
-from compiler.solvers import (
+from main.compiler.solvers import (
     run_dirac3,
     run_sa_openjij,
     run_gurobi_miqp,
     run_gurobi_nlfunc,
 )
-from compiler.solver_io.helpers.solution_writer import (
+from main.compiler.solver_io.helpers.solution_writer import (
     resolve_solver_config_id,
     pending_problem_hashes,
     ensure_run,
 )
+from main.constants import SOLUTION_SCHEMA_VERSION
 
-SOLUTION_SCHEMA_VERSION = "0.3.0"
 DEFAULT_DB = "data/hubobench.db"
 
 # solver_name -> runner module. solver_name is the value stored in

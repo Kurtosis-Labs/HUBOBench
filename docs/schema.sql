@@ -165,3 +165,18 @@ CREATE INDEX IF NOT EXISTS idx_samples_solution_id
 
 CREATE INDEX IF NOT EXISTS idx_samples_solution_rank
     ON samples (solution_id, sample_rank);
+
+
+-- ---------------------------------------------------------------------------
+-- schema_migrations
+-- Tracking table for the explicit migration runner (main/migrations/run.py).
+-- One row per applied step; the runner skips any step_id already present, so
+-- re-running is a no-op. Defined here for fresh DBs; the runner also issues
+-- CREATE TABLE IF NOT EXISTS for databases that predate this table.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS schema_migrations (
+
+    step_id     TEXT    PRIMARY KEY,    -- e.g. m0001_v03_to_v04
+    applied_at  TEXT    NOT NULL        -- ISO-8601 UTC timestamp when applied
+
+);

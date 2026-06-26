@@ -10,9 +10,9 @@ import sqlite3
 import time
 from typing import Any
 
-from compiler.solver_io import sa_openjij
-from compiler.solver_io.helpers.instance_loader import load_instance
-from compiler.solver_io.helpers.solution_writer import write_solution
+from main.compiler.solver_io import sa_openjij
+from main.compiler.solver_io.helpers.instance_loader import load_instance
+from main.compiler.solver_io.helpers.solution_writer import write_solution
 
 SOLVER_NAME = sa_openjij.SOLVER_NAME
 LIMITS_DOSSIER_VERSION = sa_openjij.LIMITS_DOSSIER_VERSION

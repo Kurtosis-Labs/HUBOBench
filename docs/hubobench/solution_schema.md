@@ -1,6 +1,6 @@
 # Canonical Solution Schema
 
-**Status:** Draft 0.3.0
+**Status:** Draft 0.4.0
 **Owner:** Chen Mingda
 
 ---
@@ -211,3 +211,4 @@ Encoding: `'[]'` means checked and clean; a non-empty list names the fired flags
 | 0.1 | 2026-05-11 | M. Chen | Initial draft |
 | 0.2 | 2026-06-08 | M. Chen | Tightened draft, eliminated unnecessary columns |
 | 0.3.0 | 2026-06-12 | M. Chen | SQL-first redesign. Canonical solution dict replaces JSON file format. Storage schema defined across runs, solver_configs, solutions, samples tables. |
+| 0.4.0 | 2026-06-25 | tamkaize | `flags` is always a JSON list string (`'[]'` when clean), never `None` from a decode; `NULL` reserved for pre-0.4.0 rows. `FLAGGED` status retired (warnings live in `flags`, not the termination status). Version constants centralized in `main/constants.py`; legacy `0.3.0` rows migrated by `main/migrations/` step `m0001_v03_to_v04` (version strings only). |
