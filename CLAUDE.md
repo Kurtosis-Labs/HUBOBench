@@ -31,6 +31,11 @@ On a fresh clone, build it from the schema before anything else:
 python -c "import sqlite3; sqlite3.connect('data/hubobench.db').executescript(open('docs/schema.sql').read())"
 ```
 
+`docs/schema.sql` is the **single source of truth** for the schema: a fresh DB is born at the
+current version, so there is no migration step. (The live corpus was brought to the current
+schema by a one-time migration that has since been removed; the `schema_migrations` table it
+leaves on already-migrated DBs is a harmless historical record.)
+
 Generate instances, then run solvers:
 
 ```bash
@@ -43,13 +48,15 @@ python -m main.data.synthetic_generator --batch
 python -m main.compiler.agg_runner
 # A subset, custom db / run id.
 python -m main.compiler.agg_runner --solvers SA_OpenJij gurobi_miqp --db data/hubobench.db --run-id myrun_001
+# List discovered solvers, or run a declared experiment set (solver + config overrides).
+python -m main.compiler.agg_runner --list-solvers
+python -m main.compiler.agg_runner --manifest examples/experiments.example.json
 ```
 
-Apply pending schema migrations (idempotent tracking-table runner; ordered steps under `main/migrations/`):
-
-```bash
-python -m main.migrations.run        # m0001 (0.3→0.4 versions), m0002 (content-addressed solver identity), m0003 (solution 0.4→0.5)
-```
+Solvers are **discovered dynamically** (`main/compiler/registry.py` scans `compiler/solvers/run_*.py` for the
+run-wrapper contract) — adding a solver needs no registry edit. `--manifest` runs experiments declared as data
+(`main/compiler/manifest.py`): each `{"solver", "config"}` entry merges config overrides onto `DEFAULT_CONFIG`,
+and since config is part of the content identity, differing configs fork distinct `solver_config_id`s.
 
 Verify corpus integrity (re-derive every `problem_hash` from its stored row; exits non-zero on any mismatch).
 This is an explicit check — `load_instance` trusts the row on the hot path; run this in CI / before scoring / after any manual DB edit:
@@ -94,11 +101,11 @@ agg_runner  (main/compiler/agg_runner.py)        ← orchestrator: SOLVER_REGIST
 - **`main/data/`** — `synthetic_generator.py` (entry point) → `encoding/instance_builder.py:assemble_instance`
   (pure: cardinality penalty, classifier features, hash, SQL row) → `encoding/{apply_cardinality,
   compute_diagnostics}.py`. `config.py` holds generator constants (`EPS_COEF`, …); the schema versions live
-  in `main/constants.py` (`PROBLEM_SCHEMA_VERSION = "0.4.0"`, `SOLUTION_SCHEMA_VERSION = "0.5.0"`), migrated by `main/migrations/`.
-- **`main/benchmarks/hash.py`** — `compute_problem_hash` is the live hash used by `instance_builder`. The same
-  file also carries a legacy `fill_hashes` / `compute_solution_hash` API built around a nested "canonical
-  solution dict" that the current SQL-era write path (`solution_writer`) does **not** use — don't wire new
-  code to it without checking it's still relevant.
+  in `main/constants.py` (`PROBLEM_SCHEMA_VERSION = "0.4.0"`, `SOLUTION_SCHEMA_VERSION = "0.5.0"`).
+- **`main/benchmarks/hash.py`** — now a single-purpose module: `compute_problem_hash` (the live content hash
+  used by `instance_builder` and `benchmarks/verify_corpus`). The legacy "canonical solution dict" API
+  (`fill_hashes` / `compute_solution_hash` / `compute_solver_config_hash` / `derive_instance_id`) was removed —
+  it was unwired by the SQL-era write path (`solution_writer`).
 
 ### Database (`docs/schema.sql` is the table contract)
 
@@ -137,13 +144,13 @@ on-disk copy of the polynomial — no instance files exist), **`solver_configs`*
 - **Two timing fields:** `wall_clock_s` (end-to-end) and `algorithmic_time_s` (solver-internal; equals wall
   clock for in-process solvers like SA).
 - **Naming drift to be aware of:** code emits `limits_dossier_version` (plural); some schema docs say
-  `limit_dossier_version` (singular). `hash.py` reads either spelling tolerantly.
+  `limit_dossier_version` (singular). The two refer to the same field.
 
 ## Adding a solver
 
 Follow `README.md` "Adding a new solver" (six steps). In short: write the limits dossier
 (`docs/limits/<solver>_limits.md`, version-pinned) → `main/compiler/solver_io/<solver>.py` (encode/decode, pure)
-→ `main/compiler/solvers/run_<solver>.py` (orchestrator, writes a row on every path) → import + register in
-`agg_runner.SOLVER_REGISTRY` keyed by `SOLVER_NAME`. Verify with
-`python -m main.compiler.agg_runner --solvers <solver>`. The binding contracts are `docs/hubobench/problem_schema.md`
+→ `main/compiler/solvers/run_<solver>.py` (orchestrator, writes a row on every path). The runner is **auto-discovered**
+by `main/compiler/registry.py` — no `SOLVER_REGISTRY` edit; just drop the `run_<solver>.py` file. Verify with
+`python -m main.compiler.agg_runner --list-solvers` then `--solvers <solver>`. The binding contracts are `docs/hubobench/problem_schema.md`
 (encode reads this) and `docs/hubobench/solution_schema.md` (decode returns this).

@@ -179,10 +179,11 @@ CREATE INDEX IF NOT EXISTS idx_samples_solution_rank
 
 -- ---------------------------------------------------------------------------
 -- schema_migrations
--- Tracking table for the explicit migration runner (main/migrations/run.py).
--- One row per applied step; the runner skips any step_id already present, so
--- re-running is a no-op. Defined here for fresh DBs; the runner also issues
--- CREATE TABLE IF NOT EXISTS for databases that predate this table.
+-- Historical record of the one-time 0.3 -> 0.5 schema migration that produced the
+-- current corpus. The migration runner that populated it has been removed;
+-- docs/schema.sql is now the single source of truth and a fresh DB is born at the
+-- current version, so this table stays empty on a fresh build. Retained here (and
+-- on databases that were migrated in place) purely as a provenance record.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS schema_migrations (
 

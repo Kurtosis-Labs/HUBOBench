@@ -1,0 +1,9 @@
+{
+  "notes": "example sweep: gurobi tighter gap + SA at two seeds",
+  "experiments": [
+    { "solver": "gurobi_miqp", "config": { "MIPGap": 1e-6 } },
+    { "solver": "SA_OpenJij", "config": { "num_sweeps": 2000, "seed": 7 } },
+    { "solver": "SA_OpenJij", "config": { "num_sweeps": 2000, "seed": 8 } },
+    { "solver": "SA_OpenJij" }
+  ]
+}
