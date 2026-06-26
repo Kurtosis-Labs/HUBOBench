@@ -110,7 +110,7 @@ Required for a deterministic and stable identity hash. All generators (and loade
 
 ## 6. Reproducibility Hash
 
-`problem_hash` is a SHA-256 digest of the minimum data needed to uniquely identify the problem. Two instances with identical polynomials over the same variable set in the same domain produce the same hash regardless of origin. A hash stored by a generator is **recomputed** on load using the reference implementation; stored hashes from older schemes are discarded, the recomputed value is the identity.
+`problem_hash` is a SHA-256 digest of the minimum data needed to uniquely identify the problem, and is the `instances` table primary key. Two instances with identical polynomials over the same variable set in the same domain produce the same hash regardless of origin. The generator computes it once at write time (`INSERT OR IGNORE`, so an existing instance is never silently mutated); `load_instance` then trusts the stored hash on the solver hot path. An **explicit** integrity check re-derives every stored row's hash and verifies it still equals the PK — run `python -m main.benchmarks.verify_corpus` (in CI, before scoring, or after any manual DB edit).
 
 ### 6.1 Input
 
@@ -141,7 +141,7 @@ Everything except the polynomial (including `sense`) and variable parameters is 
 - **JSON:** `json.dumps(..., sort_keys=True, separators=(',', ':'), ensure_ascii=True)`.
 - **Hash:** SHA-256 of the resulting UTF-8 byte string, lowercase hex digest.
 
-Reference implementation: `benchmarks/hash.py :: compute_problem_hash()`.
+Reference implementation: `benchmarks/hash.py :: compute_problem_hash()`. The corpus-integrity check that re-derives and verifies every stored hash against its PK is `benchmarks/verify_corpus.py` (`python -m main.benchmarks.verify_corpus`).
 
 ---
 

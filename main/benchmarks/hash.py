@@ -30,7 +30,7 @@ from typing import Any
 def _canonical_json(obj: Any) -> str:
     """Serialize obj to the canonical JSON string for hashing.
 
-    Rules (problem_schema.md §9.3, solution_schema.md §9.2):
+    Rules (problem_schema.md §6.3):
     - Float: Python 3.7+ json.dumps uses the same algorithm as repr(float)
              (shortest decimal that round-trips); no further processing needed.
     - Integer: plain decimal, no leading zeros (json.dumps default).
@@ -80,7 +80,7 @@ def compute_problem_hash(instance: dict[str, Any]) -> str:
     ground_truth) is excluded — two instances are the same iff they have
     the same polynomial over the same variable set in the same domain.
 
-    Spec: problem_schema.md §9.1 and §9.3.
+    Spec: problem_schema.md §6.1 and §6.3.
 
     Input shape hashed:
         {
@@ -96,7 +96,7 @@ def compute_problem_hash(instance: dict[str, Any]) -> str:
         }
 
     Terms are sorted by (degree asc, vars lex asc) — canonical order per
-    problem_schema.md §5.3. Keys within each term are sorted alphabetically
+    problem_schema.md §5. Keys within each term are sorted alphabetically
     by json.dumps(sort_keys=True): "coef" before "vars".
 
     Args:

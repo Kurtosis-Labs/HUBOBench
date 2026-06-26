@@ -43,7 +43,15 @@ python -m main.data.synthetic_generator --batch
 python -m main.compiler.agg_runner
 # A subset, custom db / run id.
 python -m main.compiler.agg_runner --solvers SA_OpenJij gurobi_miqp --db data/hubobench.db --run-id myrun_001
+# List discovered solvers, or run a declared experiment set (solver + config overrides).
+python -m main.compiler.agg_runner --list-solvers
+python -m main.compiler.agg_runner --manifest examples/experiments.example.json
 ```
+
+Solvers are **discovered dynamically** (`main/compiler/registry.py` scans `compiler/solvers/run_*.py` for the
+run-wrapper contract) — adding a solver needs no registry edit. `--manifest` runs experiments declared as data
+(`main/compiler/manifest.py`): each `{"solver", "config"}` entry merges config overrides onto `DEFAULT_CONFIG`,
+and since config is part of the content identity, differing configs fork distinct `solver_config_id`s.
 
 Apply pending schema migrations (idempotent tracking-table runner; ordered steps under `main/migrations/`):
 
@@ -143,7 +151,7 @@ on-disk copy of the polynomial — no instance files exist), **`solver_configs`*
 
 Follow `README.md` "Adding a new solver" (six steps). In short: write the limits dossier
 (`docs/limits/<solver>_limits.md`, version-pinned) → `main/compiler/solver_io/<solver>.py` (encode/decode, pure)
-→ `main/compiler/solvers/run_<solver>.py` (orchestrator, writes a row on every path) → import + register in
-`agg_runner.SOLVER_REGISTRY` keyed by `SOLVER_NAME`. Verify with
-`python -m main.compiler.agg_runner --solvers <solver>`. The binding contracts are `docs/hubobench/problem_schema.md`
+→ `main/compiler/solvers/run_<solver>.py` (orchestrator, writes a row on every path). The runner is **auto-discovered**
+by `main/compiler/registry.py` — no `SOLVER_REGISTRY` edit; just drop the `run_<solver>.py` file. Verify with
+`python -m main.compiler.agg_runner --list-solvers` then `--solvers <solver>`. The binding contracts are `docs/hubobench/problem_schema.md`
 (encode reads this) and `docs/hubobench/solution_schema.md` (decode returns this).
