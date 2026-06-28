@@ -1,4 +1,6 @@
 .env
+.venv/
+.agents/
 license_gurobi/
 licensetools13.0.1/
 
