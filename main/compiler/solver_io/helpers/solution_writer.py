@@ -78,17 +78,17 @@ def resolve_solver_config_id(
     limits_dossier_version: str,
     environment_digest: str,
 ) -> tuple[int, bool]:
-    """Find or create the solver_configs row for this (solver, config, environment).
-
-    The natural key is (solver_name, config_json, environment_digest): same
-    solver at the same config on the same device reuses one row; a different
-    device or a different config forks a new row and a fresh pending set.
-    `config` is normalised (sort_keys) into `config_json`.
-
+    """
+    Find or create the solver configuration row for a solver, configuration, and environment.
+    
+    Parameters:
+    	solver_name (str): Solver name.
+    	config (dict[str, Any]): Solver configuration to store as canonical JSON.
+    	limits_dossier_version (str): Limits dossier version to record for new rows.
+    	environment_digest (str): Digest identifying the execution environment.
+    
     Returns:
-        (solver_config_id, created)
-        created is True if a new row was inserted, False if it already existed.
-        The aggregator uses `created` to decide its skip strategy.
+    	tuple[int, bool]: The solver configuration ID and `True` when a new row was inserted, `False` when an existing row was found.
     """
     config_json = json.dumps(config, sort_keys=True, separators=(",", ":"))
 
