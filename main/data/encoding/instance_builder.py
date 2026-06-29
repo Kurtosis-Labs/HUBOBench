@@ -217,15 +217,8 @@ def assemble_instance(
     # though it is dropped from the stored blob (see §5): N must affect the
     # hash, or two instances differing only in N would collide.
     rep_hash = compute_problem_hash({
-        "objective": {
-            "sense":    "minimize",
-            "constant": float(constant),
-            "terms":    terms,
-        },
-        "parameters": {
-            "n_variables":     n_variables,
-            "variable_domain": "binary_01",
-        },
+        "terms":    terms,
+        "constant": float(constant),
     })
 
     # ── §5: objective_json blob ───────────────────────────────────────────
