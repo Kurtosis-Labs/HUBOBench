@@ -48,28 +48,24 @@ CREATE TABLE IF NOT EXISTS instances (
 
 -- ---------------------------------------------------------------------------
 -- solver_configs
--- One row per unique solver *identity*. Surrogate INTEGER PK for cheap joins.
--- Identity is content-addressed: solver_identity_hash = SHA-256 over
--- (solver_name, source_commit, config, environment_digest, dep_lock_digest)
--- (see main/compiler/solver_io/helpers/identity.py). The UNIQUE anchor is that
--- hash, so a change to the code commit, dependency lock, container/host, or
--- config forks a new identity and results are never pooled across them.
--- config_json + the provenance components are stored for queryability.
+-- One row per unique solver configuration + environment. Surrogate INTEGER PK
+-- for cheap joins. Identity is the natural key (solver_name, config_json,
+-- environment_digest): the same solver at the same config on the same device
+-- reuses one row and its results are never re-run; a different device or a
+-- different config forks a new row and a fresh pending set.
+-- solver_version is nullable — not currently populated by run wrappers but
+-- retained for manual annotation or future use.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS solver_configs (
 
     solver_config_id        INTEGER PRIMARY KEY AUTOINCREMENT,
     solver_name             TEXT    NOT NULL,   -- dirac3 | gurobi_miqp | SA_OpenJij | gurobi_nlfunc
+    solver_version          TEXT,               -- nullable; e.g. "1.2.3" if known
     limits_dossier_version  TEXT    NOT NULL,   -- dossier governing feasibility thresholds
     config_json             TEXT    NOT NULL,   -- full parameter dict; normalised key order
-
-    -- Content-addressed identity
-    solver_identity_hash    TEXT    NOT NULL,   -- sha256(name+commit+config+env+lock); the identity anchor
-    source_commit           TEXT    NOT NULL,   -- git HEAD at run time ('+dirty' if overridden)
     environment_digest      TEXT    NOT NULL,   -- container image digest, else host fingerprint
-    dep_lock_digest         TEXT    NOT NULL,   -- sha256 of uv.lock
 
-    UNIQUE (solver_identity_hash)
+    UNIQUE (solver_name, config_json, environment_digest)
 
 );
 
