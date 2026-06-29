@@ -42,7 +42,7 @@ from main.compiler.solver_io.helpers.solution_writer import (
     pending_problem_hashes,
     ensure_run,
 )
-from main.compiler.solver_io.helpers.identity import capture_provenance
+from main.compiler.solver_io.helpers.identity import capture_environment_digest
 from main.constants import SOLUTION_SCHEMA_VERSION
 
 DEFAULT_DB = "data/hubobench.db"
@@ -67,21 +67,21 @@ def run_batch(
     ensure_run(conn, run_id, SOLUTION_SCHEMA_VERSION, notes)
     conn.commit()
 
-    # Capture run provenance once (refuses on a dirty tree; see identity.py).
-    provenance = capture_provenance()
+    # Capture the environment digest once for this batch.
+    env_digest = capture_environment_digest()
 
     results: list[dict[str, Any]] = []
 
     for exp in experiments:
         module = SOLVER_REGISTRY[exp.solver]
 
-        # ----- Resolve config id (content-addressed identity; new row if unseen) -----
+        # ----- Resolve config id (natural key: solver + config + environment) -----
         solver_config_id, created = resolve_solver_config_id(
             conn,
             solver_name=exp.solver,
             config=exp.config,
             limits_dossier_version=module.LIMITS_DOSSIER_VERSION,
-            provenance=provenance,
+            environment_digest=env_digest,
         )
         conn.commit()
 

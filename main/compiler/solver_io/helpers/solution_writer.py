@@ -35,7 +35,6 @@ import json
 import sqlite3
 from typing import Any
 
-from main.compiler.solver_io.helpers.identity import compute_solver_identity_hash
 
 
 DONE_STATUSES = ("OK", "SUBOPTIMAL_GAP", "HARD_REJECT")
@@ -77,40 +76,35 @@ def resolve_solver_config_id(
     solver_name: str,
     config: dict[str, Any],
     limits_dossier_version: str,
-    provenance: dict[str, str],
+    environment_digest: str,
 ) -> tuple[int, bool]:
-    """Find or create the solver_configs row for this candidate's content identity.
+    """Find or create the solver_configs row for this (solver, config, environment).
 
-    Identity is `solver_identity_hash` = SHA-256 over
-    (solver_name, source_commit, config, environment_digest, dep_lock_digest)
-    — see helpers/identity.py. The UNIQUE anchor is that hash, so any change to
-    the code commit, dependency lock, container/host, or config forks a new id;
-    `config_json` and the provenance components are stored for queryability.
+    The natural key is (solver_name, config_json, environment_digest): same
+    solver at the same config on the same device reuses one row; a different
+    device or a different config forks a new row and a fresh pending set.
     `config` is normalised (sort_keys) into `config_json`.
 
     Returns:
         (solver_config_id, created)
-        created is True if a new identity was inserted, False if it already
-        existed. The aggregator uses `created` to decide its skip strategy.
+        created is True if a new row was inserted, False if it already existed.
+        The aggregator uses `created` to decide its skip strategy.
     """
     config_json = json.dumps(config, sort_keys=True, separators=(",", ":"))
-    identity_hash = compute_solver_identity_hash(solver_name, config, provenance)
 
     row = conn.execute(
-        "SELECT solver_config_id FROM solver_configs WHERE solver_identity_hash = ?",
-        (identity_hash,),
+        "SELECT solver_config_id FROM solver_configs "
+        "WHERE solver_name = ? AND config_json = ? AND environment_digest = ?",
+        (solver_name, config_json, environment_digest),
     ).fetchone()
     if row is not None:
         return int(row[0]), False
 
     cur = conn.execute(
         "INSERT INTO solver_configs "
-        "(solver_name, limits_dossier_version, config_json, "
-        " solver_identity_hash, source_commit, environment_digest, dep_lock_digest) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (solver_name, limits_dossier_version, config_json, identity_hash,
-         provenance["source_commit"], provenance["environment_digest"],
-         provenance["dep_lock_digest"]),
+        "(solver_name, limits_dossier_version, config_json, environment_digest) "
+        "VALUES (?, ?, ?, ?)",
+        (solver_name, limits_dossier_version, config_json, environment_digest),
     )
     return int(cur.lastrowid), True
 
