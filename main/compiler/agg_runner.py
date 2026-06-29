@@ -58,11 +58,17 @@ def run_batch(
     run_id: str,
     notes: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Run each experiment over its pending instances. Returns a per-experiment
-    result list: [{"solver", "solver_config_id", "created", "counts"}, ...].
-
-    Each experiment resolves its OWN solver_config_id from its config, so the
-    same solver at two configs forks two identities and two pending sets.
+    """
+    Run each experiment against its pending problem instances.
+    
+    Parameters:
+    	conn (sqlite3.Connection): Database connection used for run tracking and result writes.
+    	experiments (list[Experiment]): Experiments to execute in this batch.
+    	run_id (str): Identifier recorded on rows written during this batch.
+    	notes (str | None): Optional notes stored with the batch run.
+    
+    Returns:
+    	list[dict[str, Any]]: One result dictionary per experiment with the solver name, solver configuration ID, creation flag, and execution counts.
     """
     ensure_run(conn, run_id, SOLUTION_SCHEMA_VERSION, notes)
     conn.commit()

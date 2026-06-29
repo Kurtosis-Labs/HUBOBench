@@ -19,18 +19,34 @@ CONTAINER_DIGEST_ENV = "HUBOBENCH_CONTAINER_DIGEST"
 
 
 def _sha256_hex(data: bytes) -> str:
+    """
+    Compute the SHA-256 digest of the given bytes.
+    
+    Parameters:
+    	data (bytes): Input data to hash.
+    
+    Returns:
+    	str: The lowercase hexadecimal SHA-256 digest.
+    """
     return hashlib.sha256(data).hexdigest()
 
 
 def _host_fingerprint() -> str:
+    """
+    Build a host-derived fingerprint for the current runtime environment.
+    
+    Returns:
+    	str: A string in the form ``host:<16-character-hex-digest>``.
+    """
     parts = [platform.platform(), platform.machine(), "py" + platform.python_version()]
     return f"host:{_sha256_hex('|'.join(parts).encode())[:16]}"
 
 
 def capture_environment_digest() -> str:
-    """Return this run's environment digest.
-
-    Returns the container image digest from HUBOBENCH_CONTAINER_DIGEST if set,
-    otherwise a 16-char host fingerprint derived from platform + Python version.
+    """
+    Capture the environment digest for the current run.
+    
+    Returns:
+    	str: The container image digest from HUBOBENCH_CONTAINER_DIGEST when set, otherwise a host fingerprint prefixed with ``host:``.
     """
     return os.environ.get(CONTAINER_DIGEST_ENV) or _host_fingerprint()
