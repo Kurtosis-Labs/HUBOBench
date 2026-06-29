@@ -9,7 +9,7 @@ Implements the problem_hash specification from
 docs/hubobench/problem_schema.md §6 (serialisation rules).
 
 Public API:
-    compute_problem_hash(instance)   → 64-char hex string
+    compute_problem_hash(objective)   → 64-char hex string
 
 problem_hash is the content address of an instance's polynomial and serves as
 the instances-table PK (see data/encoding/instance_builder §4).

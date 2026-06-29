@@ -23,8 +23,6 @@ Every instance generator writes to this schema. Every solver encoder reads from 
 | Polynomial degree | Up to 5 |
 | Constants | Allowed — stored in `objective_json.constant` |
 
-All instances are minimisation. `sense` is `"minimize"` everywhere; it participates in the identity hash (§6) but is not stored in the `objective_json` blob, since the solvers assume minimisation.
-
 ---
 
 ## 2. Storage Architecture
