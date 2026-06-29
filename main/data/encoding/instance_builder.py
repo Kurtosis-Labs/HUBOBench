@@ -211,21 +211,11 @@ def assemble_instance(
 
     # ── §4: Reproducibility hash ──────────────────────────────────────────
     # Delegated entirely to benchmarks.hash. The input dict shape MUST match
-    # compute_problem_hash's canonicalisation (objective + parameters incl.
-    # n_variables) so that instances generated here hash identically to those
-    # already migrated from JSON. n_variables stays in the HASH INPUT even
-    # though it is dropped from the stored blob (see §5): N must affect the
-    # hash, or two instances differing only in N would collide.
+    # compute_problem_hash's canonicalisation (objective) so that instances generated 
+    # here hash identically to those already migrated from JSON.
     rep_hash = compute_problem_hash({
-        "objective": {
-            "sense":    "minimize",
-            "constant": float(constant),
-            "terms":    terms,
-        },
-        "parameters": {
-            "n_variables":     n_variables,
-            "variable_domain": "binary_01",
-        },
+        "terms":    terms,
+        "constant": float(constant),
     })
 
     # ── §5: objective_json blob ───────────────────────────────────────────

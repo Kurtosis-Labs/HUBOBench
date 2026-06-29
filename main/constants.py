@@ -20,5 +20,5 @@ independent and are NOT unified with these.
 
 from __future__ import annotations
 
-PROBLEM_SCHEMA_VERSION = "0.4.0"
+PROBLEM_SCHEMA_VERSION = "0.5.0"
 SOLUTION_SCHEMA_VERSION = "0.5.0"
