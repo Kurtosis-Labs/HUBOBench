@@ -27,7 +27,7 @@ from main.compiler.solver_io.helpers.solution_writer import write_solution
 # Load .env from the repo root explicitly so credentials resolve regardless of
 # the process CWD (the aggregator may be launched from anywhere). run_dirac3 is
 # at compiler/solvers/run_dirac3.py, so the repo root is two parents up.
-_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+_ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
 load_dotenv(_ENV_PATH)
 
 SOLVER_NAME = dirac3.SOLVER_NAME
